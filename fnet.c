@@ -136,14 +136,14 @@ int socks5_server_addr(const char *ip, uint16_t port, char *addr)
 }
 
 
-int socks5_connect_client(char *send, int len)
+int socks5_connect_client(char *send, int buflen, int *len)
 {
     
     char addr[124];
     char port[5];
     uint16_t ports;
     
-    if (len < 10) {
+    if (buflen < 10) {
         LOG_WARN("buffer is less 10");
         return -1;
     }
@@ -160,6 +160,7 @@ int socks5_connect_client(char *send, int len)
         }
         ports = ntohs(*(uint16_t*)(send + 8));
         snprintf(port, 5, "%d", ports);
+        *len = 10;
     } 
     else if (send[3] == 0x03) {
         uint8_t domain_len = *(uint8_t *)(send + 4);
@@ -167,6 +168,7 @@ int socks5_connect_client(char *send, int len)
         addr[domain_len] = '\0';
         ports = ntohs(*(uint16_t*)(send + 4 + domain_len + 1));
         snprintf(port, 5, "%d", ports);
+        *len = 7 + domain_len;
     }
     else {
         LOG_WARN("unsupported addrtype: %d", send[3]);

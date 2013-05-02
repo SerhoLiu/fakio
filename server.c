@@ -22,15 +22,38 @@ typedef struct context {
     char crecv[BUFSIZE];
     int sendlen;
     int recvlen;
+    struct event_loop *loop;
 } context;
 
-static void free_context(context *c)
+static void close_and_free_client(context *c)
 {
+    delete_event(c->loop, c->client_fd, EV_WRABLE);
+    delete_event(c->loop, c->client_fd, EV_RDABLE);
+    close(c->client_fd);
+    int x = c->client_fd;
+    c->client_fd = 0;
     if (c->client_fd || c->remote_fd) {
         return;
     }
     free(c);
+    LOG_WARN("%d I'm Free form client......................", x);    
 }
+
+static void close_and_free_remote(context *c)
+{
+    delete_event(c->loop, c->remote_fd, EV_WRABLE);
+    delete_event(c->loop, c->remote_fd, EV_RDABLE);
+    close(c->remote_fd);
+    int x = c->remote_fd;
+    c->remote_fd = 0;
+    if (c->client_fd || c->remote_fd) {
+        return;
+    }
+    free(c);
+    LOG_WARN("%d I'm Free form remote......................", x);     
+}
+
+
 
 void client_read_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata);
@@ -42,112 +65,87 @@ void client_write_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
     
-    LOG_INFO("client %d is writeable\n", fd);
+    if (c->remote_fd == 0) {
+        close_and_free_client(c);
+        return;
+    }
 
     while (1) {
         int rc = send(fd, c->crecv, c->recvlen, 0);
-        if (rc > 0) {
-            c->recvlen -= rc;
-            if (c->recvlen <= 0) {
-                LOG_INFO("Send to client %d OK!!!!!!", c->client_fd);
-                printf("now recvlen = %d\n", c->recvlen);
-                delete_event(loop, fd, EV_WRABLE);
-                create_event(loop, c->client_fd, EV_RDABLE, &client_read_cb, (void *)c); 
-                create_event(loop, c->remote_fd, EV_RDABLE, &remote_read_cb, (void *)c);
-            }
-            break;
-        }
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_WARN("send() for client %d failed: %s", fd, strerror(errno));
-                delete_event(loop, fd, EV_WRABLE);
-                delete_event(loop, fd, EV_RDABLE);
-                close(fd);
-                c->client_fd = 0;
-                free_context(evdata);
+                close_and_free_client(c);
+                close_and_free_remote(c);
                 break;
             }
             break; 
         }
-        if (rc == 0) {
-            LOG_WARN("%d Connection closed\n", fd);
-            delete_event(loop, fd, EV_WRABLE);
-            delete_event(loop, fd, EV_RDABLE);
-            close(fd);
-            c->client_fd = 0;
-            free_context(c);
-            break;
+        if (rc >= 0) {
+            c->recvlen -= rc;
+            if (c->recvlen <= 0) {
+                //LOG_INFO("Send to client %d OK!!!!!!", c->client_fd);
+                delete_event(loop, fd, EV_WRABLE);
+                create_event(loop, c->client_fd, EV_RDABLE, &client_read_cb, (void *)c); 
+                create_event(loop, c->remote_fd, EV_RDABLE, &remote_read_cb, (void *)c);
+                break;
+            }
+            continue;
         }
     }  
 }
+
 
 void client_read_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
     
-    LOG_INFO("client %d is readable\n", fd);
-    printf("now sendlen = %d\n", c->sendlen);
-    //int len = c->sendlen;
     while (1) {
         int rc = recv(fd, c->csend, BUFSIZE, 0);
-        printf("form client %d recv rc is  = %d\n", c->client_fd, rc);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_WARN("recv() failed: %s", strerror(errno));
-                delete_event(loop, fd, EV_WRABLE);
-                delete_event(loop, fd, EV_RDABLE);
-                close(fd);
-                c->client_fd = 0;
-                free_context(c);
-                break;
+                close_and_free_client(c);
+                close_and_free_remote(c);
+                return;
             }
             
-            //LOG_WARN("from client %d recv: %s\n", c->client_fd, c->csend);
-            
             delete_event(loop, fd, EV_RDABLE);
-            create_event(loop, c->remote_fd, EV_WRABLE, &remote_write_cb, (void *)c);
             break; 
         }
         if (rc == 0) {
-            LOG_WARN("%d Connection closed\n", fd);
-            delete_event(loop, fd, EV_WRABLE);
-            delete_event(loop, fd, EV_RDABLE);
-            close(fd);
-            c->client_fd = 0;
-            create_event(loop, c->remote_fd, EV_WRABLE, &remote_write_cb, (void *)c);
+            LOG_WARN("client %d connection closed\n", fd);
+            close_and_free_client(c);
             LOG_WARN("context client %d and remote %d ", c->client_fd, c->remote_fd);
-            free_context(c);
             break;
         }
         c->sendlen += rc;
-        printf("from client %d sendlen = %d\n", fd, c->sendlen);
-        //LOG_WARN("from client %d recv: %s\n", c->client_fd, c->csend);
-        if (c->sendlen > BUFSIZE - 5) {
-            //LOG_WARN("recv from client: %s\n", c->csend);
+        
+        if (c->sendlen > BUFSIZE - 1) {
             delete_event(loop, fd, EV_RDABLE);
-            create_event(loop, c->remote_fd, EV_WRABLE, &remote_write_cb, (void *)c);
             break;    
         }
     }
+    create_event(loop, c->remote_fd, EV_WRABLE, &remote_write_cb, (void *)c);
 }
 
 void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     if (mask & EV_RDABLE) {
         while (1) {
-            int new_fd = accept(fd, NULL, NULL);
-            if (new_fd < 0) {
+            int remote_fd = accept(fd, NULL, NULL);
+            if (remote_fd < 0) {
                 if (errno != EWOULDBLOCK) {
                     LOG_WARN("accept() failed\n");
                     break;
                 }
                 continue;
             }
-            set_nonblocking(new_fd);
-            set_sock_option(new_fd);
+            set_nonblocking(remote_fd);
+            set_sock_option(remote_fd);
 
-            LOG_INFO("New incoming connection - %d\n", new_fd);
-            create_event(loop, new_fd, EV_RDABLE, &server_remote_reply_cb, NULL);
+            LOG_INFO("New incoming connection - %d\n", remote_fd);
+            create_event(loop, remote_fd, EV_RDABLE, &server_remote_reply_cb, NULL);
             break;
         }
     }
@@ -165,52 +163,57 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_WARN("recv() failed: %s", strerror(errno));
-                delete_event(loop, remote_fd, EV_WRABLE);
-                delete_event(loop, remote_fd, EV_RDABLE);
-                close(remote_fd);
                 break;
             }
-
-            LOG_WARN("server and remote %d talk....recv:", remote_fd);
-        
-            int client_fd = socks5_connect_client(buffer, len);
-            if (client_fd < 0) {
-                LOG_WARN("can't connect remote");
-                break;
-            }
-            printf("client_fd = %d\n", client_fd);
-            set_nonblocking(client_fd);
-            
-            context *c = malloc(sizeof(*c));
-            if (c == NULL) {
-                LOG_ERROR("Malloc Error");
-            }
-            malloc_count++;
-            c->client_fd = client_fd;
-            c->remote_fd = remote_fd;
-            LOG_WARN("remote %d and client %d .............", remote_fd, client_fd);
-            c->sendlen = c->recvlen = 0;
-            
-            delete_event(loop, remote_fd, EV_RDABLE);
-            create_event(loop, remote_fd, EV_RDABLE, &remote_read_cb, (void *)c);
-            break;
+            return;
         }
         if (rc == 0) {
             LOG_WARN("remote %d Connection closed\n", remote_fd);
-            delete_event(loop, fd, EV_WRABLE);
-            delete_event(loop, fd, EV_RDABLE);
-            close(fd);
             break;
         }
-        len += rc;
+
+        //len += rc;
+        printf("server and remote %d talk recv len %d\n", remote_fd, rc);
         if (buffer[0] != 0x05) {
-                delete_event(loop, remote_fd, EV_WRABLE);
-                delete_event(loop, remote_fd, EV_RDABLE);
-                close(remote_fd);
-                break;
-            }
-        printf("server and remote %d talk recv len %d\n", remote_fd, len);      
+            LOG_WARN("Not socks5 requ.......");
+            break;
+        }   
+        LOG_WARN("server and remote %d talk....recv:", remote_fd);
+        
+        int client_fd = socks5_connect_client(buffer, rc, &len);
+        if (client_fd < 0) {
+            LOG_WARN("can't connect remote");
+            break;
+        }
+        printf("client_fd = %d\n", client_fd);
+        set_nonblocking(client_fd);
+        
+        context *c = malloc(sizeof(*c));
+        if (c == NULL) {
+            LOG_ERROR("Malloc Error");
+        }
+        malloc_count++;
+        c->client_fd = client_fd;
+        c->remote_fd = remote_fd;
+        LOG_WARN("remote %d and client %d add.............", remote_fd, client_fd);
+        c->sendlen = c->recvlen = 0;
+        c->loop = loop;
+
+        delete_event(loop, remote_fd, EV_RDABLE);
+        if (rc > len) {
+            memcpy(c->crecv, buffer+len, rc-len);
+            c->recvlen = rc - len;
+            create_event(loop, c->client_fd, EV_WRABLE, &client_write_cb, c);
+        } else {
+            create_event(loop, remote_fd, EV_RDABLE, &remote_read_cb, c);    
+        }
+        memset(buffer, 0, BUFSIZE);
+        return;      
     }
+
+    delete_event(loop, remote_fd, EV_WRABLE);
+    delete_event(loop, remote_fd, EV_RDABLE);
+    close(remote_fd);
     memset(buffer, 0, BUFSIZE);
 }
 
@@ -218,100 +221,69 @@ void remote_write_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
     
-    LOG_INFO("server %d is writeable\n", fd);
-    //printf("buffer %ld\n", strlen(buffer));
-    //int len = c->sendlen;
+    if (c->sendlen == 0) {
+        close_and_free_remote(c);
+        return;
+    }
     while (1) {
         int rc = send(fd, c->csend, c->sendlen, 0);
-        LOG_INFO("send to remote len %d", rc);
-        if (rc > 0) {
-            c->sendlen -= rc;
-            if (c->sendlen <= 0) {
-                LOG_INFO("Send to remote %d OK!!!!!!", fd);
-                printf("sendlen = %d\n", c->sendlen);
-                delete_event(loop, fd, EV_WRABLE);
-                if (c->client_fd == 0) {
-                    delete_event(loop, fd, EV_WRABLE);
-                    delete_event(loop, fd, EV_RDABLE);
-                    close(fd);
-                    c->remote_fd = 0;
-                    free_context(c);
-                } else {
-                    create_event(loop, fd, EV_RDABLE, &remote_read_cb, (void *)c);
-                    create_event(loop, c->client_fd, EV_RDABLE, &client_read_cb, (void *)c);      
-                }   
-            }
-            break;
-        }
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_WARN("send() failed: %s", strerror(errno));
-                delete_event(loop, fd, EV_WRABLE);
-                delete_event(loop, fd, EV_RDABLE);
-                close(fd);
-                c->remote_fd = 0;
-                free_context(evdata);
-                break;
+                close_and_free_remote(c);
+                close_and_free_client(c);
+                return;
             }
             break; 
         }
-        if (rc == 0) {
-            LOG_WARN("%d Connection closed\n", fd);
-            delete_event(loop, fd, EV_WRABLE);
-            delete_event(loop, fd, EV_RDABLE);
-            close(fd);
-            c->remote_fd = 0;
-            free_context(c);
-            break;
+        if (rc >= 0) {
+            c->sendlen -= rc;
+            if (c->sendlen <= 0) {
+                delete_event(loop, fd, EV_WRABLE);
+                if (c->client_fd == 0) {
+                    close_and_free_remote(c);
+                } else {
+                    create_event(loop, fd, EV_RDABLE, &remote_read_cb, c);
+                    create_event(loop, c->client_fd, EV_RDABLE, &client_read_cb, c);      
+                }
+                break;   
+            }
+            continue;
         }
+        
     }  
 }
 
 void remote_read_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-    
-    LOG_INFO("remote %d is readable\n", fd);
-    printf("recvlen = %d\n", c->recvlen);
-    //int len = c->recvlen;
-    
+
     while (1) {
         int rc = recv(fd, c->crecv, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_WARN("recv() failed: %s", strerror(errno));
-                delete_event(loop, fd, EV_WRABLE);
-                delete_event(loop, fd, EV_RDABLE);
-                close(fd);
-                c->remote_fd = 0;
-                free_context(evdata);
-                break;
+                close_and_free_remote(c);
+                close_and_free_client(c);
+                return;
             }
             
-            //LOG_WARN("from remote recv: %s\n", c->crecv);
             delete_event(loop, fd, EV_RDABLE);
-            create_event(loop, c->client_fd, EV_WRABLE, &client_write_cb, (void *)c);
             break; 
         }
         if (rc == 0) {
-            LOG_WARN("%d Connection closed\n", fd);
-            delete_event(loop, fd, EV_WRABLE);
-            delete_event(loop, fd, EV_RDABLE);
-            close(fd);
-            c->remote_fd = 0;
-            free_context(evdata);
+            LOG_WARN("remote %d Connection closed", fd);
+            close_and_free_remote(c);
             break;
         }
 
         c->recvlen += rc;
-        printf("from remote recvlen = %d\n", c->recvlen);
         if (c->recvlen > BUFSIZE - 5) {
-            //LOG_WARN("recv from remote: %s\n", c->crecv);
             delete_event(loop, fd, EV_RDABLE);
-            create_event(loop, c->client_fd, EV_WRABLE, &client_write_cb, (void *)c);
             break;     
         }  
     }
+    create_event(loop, c->client_fd, EV_WRABLE, &client_write_cb, c);
 }
 
 void signal_handle()

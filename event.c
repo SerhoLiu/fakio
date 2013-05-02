@@ -56,7 +56,8 @@ static int ev_api_poll(event_loop *loop, struct timeval *tvp)
 
     LOG_INFO("Waiting on select()...\n");
     retval = select(loop->maxfd + 1, &state->crfds, &state->cwfds, NULL, tvp);
-    LOG_INFO("Select retval is %d\n", retval);
+    LOG_INFO("Select maxfd is %d\n", loop->maxfd);
+
     if (retval > 0) {
         for (j = 0; j <= loop->maxfd; j++) {
             int mask = 0;
@@ -131,7 +132,7 @@ int create_event(event_loop *loop, int fd, int mask,
     if (ev_api_addevent(loop, fd, mask) == -1)
         return -1;
 
-    LOG_INFO("%d add envent!\n", fd);
+    //LOG_INFO("%d add envent!\n", fd);
     ev->mask |= mask;
 
     if (mask & EV_RDABLE) ev->ev_read = cb;
