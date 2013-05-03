@@ -105,7 +105,7 @@ int create_and_connect(const char *host, const char *port)
 }
 
 /* 使用 IPv4:port 格式生成服务器地址 */
-int socks5_get_server_reply(const char *ip, uint16_t port, char *reply, int *len)
+int socks5_get_server_reply(const char *ip, uint16_t port, char *reply)
 {
     if (reply == NULL) {
         return 0;
@@ -117,25 +117,23 @@ int socks5_get_server_reply(const char *ip, uint16_t port, char *reply, int *len
     int r = inet_pton(AF_INET, ip, reply+4);
     if (r == 0) {
         LOG_WARN("IPv4 addr not enable");
-        return 0;
+        return -1;
     } else if (r == -1) {
         LOG_WARN("IPv4 %s", strerror(errno));
-        return 0;
+        return -1;
     }
 
     uint16_t ports = htons(port);
-    //snprintf(addr+8, 2, "%d", ports);
-    //*(addr + 8) = 0x04;
-    //uint8_t t = port;
-    //*(addr + 9) = 0x38;
-    //printf("%d\n", port);
+    *(uint16_t *)(reply + 8) = ports;
+
+   
     int i;
-    for (i = 0; i < 12; i++) {
-        printf("%x ", *(addr+i));
+    for (i = 0; i < 10; i++) {
+        printf("%x ", *(reply+i));
     }
     printf("\n");
-    return 1;
 
+    return 10;
 }
 
 
@@ -182,18 +180,3 @@ int socks5_connect_client(char *send, int buflen, int *len)
 
     return client_fd;
 }
-
-/*
-int main(int argc, char const *argv[])
-{
-    //char test[10] = {0x05, 0x01 0x00, 3 10 69 6d 67 2e 73 65 72 68 6f 6c 69 75 2e 63 6f 6d 0 50};
-    char addr[12];
-    //socks5_connect_client(test);
-    socks5_server_addr("202.103.190.27", 7201, addr);
-    int i;
-                for (i = 0; i < 12; i++) {
-                    printf("%x ", *(addr+i));
-                }
-                printf("\n");
-    return 0;
-}*/

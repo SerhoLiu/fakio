@@ -15,7 +15,7 @@ int set_nonblocking(int fd);
 int set_sock_option(int fd);
 int create_and_bind(const char *host, const char *port);
 int create_and_connect(const char *host, const char *port);
-int socks5_server_addr(const char *ip, unsigned short port, char *addr);
+int socks5_get_server_reply(const char *ip, unsigned short port, char *reply);
 int socks5_connect_client(char *send, int buflen, int *len);
 
 #endif

@@ -12,6 +12,7 @@
 #include <signal.h>
 
 #define BUFSIZE 1440
+#define REPLY_SIZE 12
 
 int malloc_count = 0;
 
@@ -86,7 +87,7 @@ void client_write_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             c->recvlen -= rc;
             if (c->recvlen <= 0) {
                 printf("send client recvlen %d\n", rc);
-                LOG_INFO("Send to client %d OK!!!!!!\n %s", c->client_fd, c->crecv);
+                //LOG_INFO("Send to client %d OK!!!!!!\n %s", c->client_fd, c->crecv);
                 delete_event(loop, fd, EV_WRABLE);
                 if (c->remote_fd == 0) {
                     close_and_free_client(c);
@@ -126,7 +127,7 @@ void client_read_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             break;
         }
         c->sendlen += rc;
-        printf("from client read %s\n", c->csend);
+        //printf("from client read %s\n", c->csend);
         if (c->sendlen > BUFSIZE - 1) {
             delete_event(loop, fd, EV_RDABLE);
             break;    
@@ -159,8 +160,8 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
 void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    int client_fd = fd, flag = 0;
-    char buffer[BUFSIZE], reply[12];
+    int client_fd = fd;
+    char buffer[BUFSIZE], reply[REPLY_SIZE];
 
     while (1) {
         int rc = recv(client_fd, buffer, BUFSIZE, 0);
@@ -177,29 +178,28 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
             break;
         }
 
-        //len += rc;
         printf("server and client %d talk recv len %d\n", client_fd, rc);
-        if (buffer[0] == 0x05 && buffer[1] == 0x01 && buffer[2] == 0x00) {
-            reply[0] = 0x05;
-            reply[1] = 0x00;
+        if (buffer[0] == SOCKS_VER && buffer[1] == SOCKS_NMETHODS && buffer[2] == SOCKS_NO_AUTH) {
             if (rc < 4) {
                 printf("socks5 firsr .......\n");
+                reply[0] = SOCKS_VER;
+                reply[1] = SOCKS_NO_AUTH;
+                //TODO........
                 send(client_fd, reply, 2, 0);
-                flag = 1;
                 memset(buffer, 0, BUFSIZE);
-                memset(reply, 0, 12);
                 return;
             } else {
                 printf("socks5 2..... .......\n");
                 int remote_fd = create_and_connect("0.0.0.0", "8000");
-                send(remote_fd, buffer, rc, 0);
-                reply[2] = 0x00;
-                reply[3] = 0x01;
-                socks5_server_addr("0.0.0.0", 1080, reply);
-                send(client_fd, reply, 10, 0);
-
-                printf("remote_fd = %d\n", remote_fd);
-                set_nonblocking(remote_fd);
+                if (remote_fd < 0) {
+                    LOG_WARN("remote don't onnection");
+                    break;
+                }
+                set_nonblocking(remote_fd); 
+                send(remote_fd, buffer, rc, 0);    
+                reply[1] = SOCKS_REP_SUCCEED;
+                int reply_len = socks5_get_server_reply("0.0.0.0", 1080, reply);
+                send(client_fd, reply, reply_len, 0);
                 
                 context *c = malloc(sizeof(*c));
                 if (c == NULL) {
@@ -215,7 +215,6 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 delete_event(loop, client_fd, EV_RDABLE);
                 create_event(loop, c->client_fd, EV_RDABLE, &client_read_cb, c);
                 memset(buffer, 0, BUFSIZE);
-                memset(reply, 0, 12);
                 return;
             }
         } else {
@@ -287,7 +286,7 @@ void remote_read_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
 
         c->recvlen += rc;
-        printf("from remote read %s\n %d\n", c->crecv, rc);
+        //printf("from remote read %s\n %d\n", c->crecv, rc);
         if (c->recvlen > BUFSIZE - 5) {
             delete_event(loop, fd, EV_RDABLE);
             break;     
