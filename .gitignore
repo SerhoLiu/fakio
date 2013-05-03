@@ -4,7 +4,6 @@ local
 client*
 test
 fcrypt.*
-local.c
 test_event.c
 fnet
 oldserver.c

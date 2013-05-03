@@ -105,13 +105,16 @@ int create_and_connect(const char *host, const char *port)
 }
 
 /* 使用 IPv4:port 格式生成服务器地址 */
-int socks5_server_addr(const char *ip, uint16_t port, char *addr)
+int socks5_get_server_reply(const char *ip, uint16_t port, char *reply, int *len)
 {
-    if (addr == NULL) {
+    if (reply == NULL) {
         return 0;
     }
-
-    int r = inet_pton(AF_INET, ip, addr+4);
+    reply[0] = SOCKS_VER;
+    reply[2] = SOCKS_RSV;
+    reply[3] = SOCKS_ATYPE_IPV4;
+    
+    int r = inet_pton(AF_INET, ip, reply+4);
     if (r == 0) {
         LOG_WARN("IPv4 addr not enable");
         return 0;
@@ -120,17 +123,17 @@ int socks5_server_addr(const char *ip, uint16_t port, char *addr)
         return 0;
     }
 
-    //uint16_t ports = htons(port);
+    uint16_t ports = htons(port);
     //snprintf(addr+8, 2, "%d", ports);
-    *(addr + 8) = 0x04;
+    //*(addr + 8) = 0x04;
     //uint8_t t = port;
-    *(addr + 9) = 0x38;
+    //*(addr + 9) = 0x38;
     //printf("%d\n", port);
     int i;
-                for (i = 0; i < 12; i++) {
-                    printf("%x ", *(addr+i));
-                }
-                printf("\n");
+    for (i = 0; i < 12; i++) {
+        printf("%x ", *(addr+i));
+    }
+    printf("\n");
     return 1;
 
 }
@@ -149,12 +152,12 @@ int socks5_connect_client(char *send, int buflen, int *len)
     }
     
     /* 仅支持 TCP 连接方式 */
-    if (send[0] != 0x05 || send[1] != 0x01) {
-        LOG_WARN("ONLY TCP");
+    if (send[0] != SOCKS_VER || send[1] != SOCKS_CONNECT) {
+        LOG_WARN("only tcp connect mode");
         return -1;
     }
     /*  IPv4 */
-    if (send[3] == 0x01) {
+    if (send[3] == SOCKS_ATYPE_IPV4) {
         if (inet_ntop(AF_INET, send + 4, addr, INET_ADDRSTRLEN) == NULL) {
             LOG_WARN("IPv4 Error %s", strerror(errno));
         }
@@ -162,7 +165,7 @@ int socks5_connect_client(char *send, int buflen, int *len)
         snprintf(port, 5, "%d", ports);
         *len = 10;
     } 
-    else if (send[3] == 0x03) {
+    else if (send[3] == SOCKS_ATYPE_DNAME) {
         uint8_t domain_len = *(uint8_t *)(send + 4);
         strncpy(addr, send + 5, domain_len);
         addr[domain_len] = '\0';
