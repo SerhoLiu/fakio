@@ -1,10 +1,3 @@
 *.o
-server
-local
-client*
-test
-fcrypt.*
-test_event.c
-fnet
-oldserver.c
-ringbuf.c
+fakio-server
+fakio-local
