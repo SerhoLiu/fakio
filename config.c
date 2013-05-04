@@ -71,7 +71,6 @@ void load_config_file(config *cfg, const char *path)
         if (fgets(buffer, 100, f) == NULL) continue;
         if (buffer[0] == '#' || buffer[0] == '\n') continue;
         r = parser_string(cfg, buffer);
-        memset(buffer, 0, 100);
     }
     fclose(f);
 }
