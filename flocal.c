@@ -14,6 +14,8 @@
 
 #define REPLY_SIZE 12
 
+static fcrypt_ctx fctx;
+
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
@@ -83,6 +85,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             break;
         }
         c->sendlen += rc;
+        FCRYPT_ENCRYPT(&fctx, c->sendlen, c->csend);
         delete_event(loop, fd, EV_RDABLE);
         break;    
     }
@@ -115,7 +118,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     int client_fd = fd;
-    char buffer[BUFSIZE], reply[REPLY_SIZE];
+    unsigned char buffer[BUFSIZE], reply[REPLY_SIZE];
 
     while (1) {
         int rc = recv(client_fd, buffer, BUFSIZE, 0);
@@ -147,7 +150,7 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 }
                 set_nonblocking(remote_fd); 
                 //.........
-                //encrypt(buffer, rc);
+                FCRYPT_ENCRYPT(&fctx, rc, buffer);
                 send(remote_fd, buffer, rc, 0);    
                 reply[1] = SOCKS_REP_SUCCEED;
                 int reply_len = socks5_get_server_reply("0.0.0.0", cfg.local_port, reply);
@@ -240,7 +243,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
 
         c->recvlen += rc;
-        //decrypt(c->crecv, c->recvlen);
+        FCRYPT_DECRYPT(&fctx, c->recvlen, c->crecv);
         delete_event(loop, fd, EV_RDABLE);
         break;     
     }
@@ -250,7 +253,8 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 int main (int argc, char *argv[])
 {
     load_config_file(&cfg, "fakio.conf");
-    
+    FCRYPT_INIT(&fctx, cfg.key, MAX_KEY_LEN-1);
+
     event_loop *loop;
     loop = create_event_loop(100);
     if (loop == NULL) {

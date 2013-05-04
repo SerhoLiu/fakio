@@ -19,11 +19,11 @@ typedef struct context {
     int client_fd;
     int remote_fd;
     
-    char csend[BUFSIZE];
+    unsigned char csend[BUFSIZE];
     int sendlen;
     int snow;
     
-    char crecv[BUFSIZE];
+    unsigned char crecv[BUFSIZE];
     int recvlen;
     int rnow;
 

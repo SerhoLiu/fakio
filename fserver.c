@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <signal.h>
 
+static fcrypt_ctx fctx;
+
 static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 static void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
@@ -89,7 +91,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
          * 尽可能的多接收数据后再进行发送
          * 目前是不管多少，收到即发
          */
-        //encrypt(c->csend, rc);
+        FCRYPT_ENCRYPT(&fctx, c->sendlen, c->csend);
         delete_event(loop, fd, EV_RDABLE);
         break;    
     }
@@ -122,7 +124,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     int len = 0, remote_fd = fd;
-    char buffer[BUFSIZE];
+    unsigned char buffer[BUFSIZE];
 
     /* 此处 while 是比较"脏"的用法 */
     while (1) {
@@ -141,7 +143,7 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
         }
 
         if (rc > 0) {
-            //decrypt(buffer, rc);
+            FCRYPT_DECRYPT(&fctx, rc, buffer);
             LOG_DEBUG("server and remote %d talk recv len %d", remote_fd, rc);
             if (buffer[0] != 0x05) {
                 LOG_WARN("remote %d not socks5 request", remote_fd);
@@ -254,7 +256,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
 
         c->recvlen += rc;
-        //decrypt(c->crecv, c->recvlen);
+        FCRYPT_DECRYPT(&fctx, c->recvlen, c->crecv);
         
         delete_event(loop, fd, EV_RDABLE);
         break;     
@@ -266,6 +268,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 int main (int argc, char *argv[])
 {
     load_config_file(&cfg, "fakio.conf");
+    FCRYPT_INIT(&fctx, cfg.key, MAX_KEY_LEN - 1);
     
     event_loop *loop;
     loop = create_event_loop(100);
