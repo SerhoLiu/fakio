@@ -123,7 +123,7 @@ void close_and_free_client(context *c)
     if (c->client_fd || c->remote_fd) {
         return;
     }
-    LOG_INFO("free context from client %d", x);
+    LOG_DEBUG("free context from client %d", x);
     free(c);     
 }
 
@@ -144,7 +144,7 @@ void close_and_free_remote(context *c)
     if (c->client_fd || c->remote_fd) {
         return;
     }
-    LOG_INFO("free context from remote %d", x);
+    LOG_DEBUG("free context from remote %d", x);
     free(c);       
 }
 
@@ -220,7 +220,7 @@ int socks5_connect_client(char *send, int buflen, int *len)
         LOG_WARN("unsupported addrtype: %d", send[3]);
         return -1;
     }
-    LOG_INFO("client addr %s, port %s", addr, port);
+    LOG_INFO("connecting %s : %s", addr, port);
     int client_fd = create_and_connect(addr, port);
 
     return client_fd;

@@ -10,18 +10,25 @@
 
 #ifdef NDEBUG
   
-  #define LOG_INFO(format, ...) (void)0
+  #define LOG_DEBUG(format, ...) (void)0
 
 #else
 
-  #define LOG_INFO(format, ...) do {\
+  #define LOG_DEBUG(format, ...) do {\
+                          time_t now = time(NULL);\
+                          char timestr[20];\
+                          strftime(timestr, 20, "%F %T", localtime(&now));\
+                          fprintf(stderr, "\e[32m[%s DEBUG] \e[0m" format "\n", timestr, ##__VA_ARGS__);}\
+                          while(0) 
+
+#endif
+
+#define LOG_INFO(format, ...) do {\
                           time_t now = time(NULL);\
                           char timestr[20];\
                           strftime(timestr, 20, "%F %T", localtime(&now));\
                           fprintf(stderr, "\e[32m[%s INFO] \e[0m" format "\n", timestr, ##__VA_ARGS__);}\
                           while(0)
-
-#endif
 
 #define LOG_WARN(format, ...) do {\
                           time_t now = time(NULL);\

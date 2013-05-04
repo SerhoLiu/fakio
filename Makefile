@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O1 -g -Wall
+CFLAGS = -O1 -g -Wall -D NDEBUG
 
 OBJ = config.o fevent.o fnet.o fcrypt.o 
 

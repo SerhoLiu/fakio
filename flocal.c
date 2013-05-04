@@ -33,7 +33,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = send(fd, c->crecv+c->rnow, c->recvlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("send() to client %d failed: %s", fd, strerror(errno));
+                LOG_DEBUG("send() to client %d failed: %s", fd, strerror(errno));
                 close_and_free_client(c);
                 close_and_free_remote(c);
                 return;
@@ -69,7 +69,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = recv(fd, c->csend, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("recv() from client %d failed: %s", fd, strerror(errno));
+                LOG_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
                 close_and_free_client(c);
                 close_and_free_remote(c);
                 return;
@@ -78,7 +78,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             break; 
         }
         if (rc == 0) {
-            LOG_WARN("client %d connection closed\n", fd);
+            LOG_DEBUG("client %d connection closed\n", fd);
             close_and_free_client(c);
             break;
         }
@@ -105,7 +105,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             set_nonblocking(client_fd);
             set_sock_option(client_fd);
 
-            LOG_INFO("New client incoming connection - %d\n", client_fd);
+            LOG_DEBUG("New client incoming connection - %d\n", client_fd);
             create_event(loop, client_fd, EV_RDABLE, &server_client_reply_cb, NULL);
             break;
         }
@@ -121,13 +121,13 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
         int rc = recv(client_fd, buffer, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("recv() failed: %s", strerror(errno));
+                LOG_DEBUG("recv() failed: %s", strerror(errno));
                 break;
             }
             return;
         }
         if (rc == 0) {
-            LOG_WARN("client %d connection closed\n", client_fd);
+            LOG_DEBUG("client %d connection closed\n", client_fd);
             break;
         }
 
@@ -195,7 +195,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = send(fd, c->csend+c->snow, c->sendlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("send() to remote %d failed: %s", fd, strerror(errno));
+                LOG_DEBUG("send() to remote %d failed: %s", fd, strerror(errno));
                 close_and_free_remote(c);
                 close_and_free_client(c);
                 return;
@@ -224,7 +224,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = recv(fd, c->crecv, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("recv() failed: %s", strerror(errno));
+                LOG_DEBUG("recv() failed: %s", strerror(errno));
                 close_and_free_remote(c);
                 close_and_free_client(c);
                 return;
@@ -234,7 +234,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             break; 
         }
         if (rc == 0) {
-            LOG_WARN("remote %d Connection closed", fd);
+            LOG_DEBUG("remote %d Connection closed", fd);
             close_and_free_remote(c);
             break;
         }

@@ -32,7 +32,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = send(fd, c->crecv + c->rnow, c->recvlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("send() to client %d failed: %s", fd, strerror(errno));
+                LOG_DEBUG("send() to client %d failed: %s", fd, strerror(errno));
                 close_and_free_client(c);
                 close_and_free_remote(c);
                 return;
@@ -69,7 +69,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = recv(fd, c->csend, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("recv() from client %d failed: %s", fd, strerror(errno));
+                LOG_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
                 close_and_free_client(c);
                 close_and_free_remote(c);
                 return;
@@ -78,7 +78,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             break; 
         }
         if (rc == 0) {
-            LOG_WARN("client %d connection closed", fd);
+            LOG_DEBUG("client %d connection closed", fd);
             close_and_free_client(c);
             break;
         }
@@ -112,7 +112,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             set_nonblocking(remote_fd);
             set_sock_option(remote_fd);
 
-            LOG_INFO("new remote %d comming connection", remote_fd);
+            LOG_DEBUG("new remote %d comming connection", remote_fd);
             create_event(loop, remote_fd, EV_RDABLE, &server_remote_reply_cb, NULL);
             break;
         }
@@ -130,19 +130,19 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
 
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("recv() failed: %s", strerror(errno));
+                LOG_DEBUG("recv() failed: %s", strerror(errno));
                 break;
             }
             return;
         }
         if (rc == 0) {
-            LOG_WARN("remote %d connection closed\n", remote_fd);
+            LOG_DEBUG("remote %d connection closed\n", remote_fd);
             break;
         }
 
         if (rc > 0) {
             //decrypt(buffer, rc);
-            LOG_INFO("server and remote %d talk recv len %d", remote_fd, rc);
+            LOG_DEBUG("server and remote %d talk recv len %d", remote_fd, rc);
             if (buffer[0] != 0x05) {
                 LOG_WARN("remote %d not socks5 request", remote_fd);
                 break;
@@ -201,7 +201,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = send(fd, c->csend + c->snow, c->sendlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("send() failed: %s", strerror(errno));
+                LOG_DEBUG("send() failed: %s", strerror(errno));
                 close_and_free_remote(c);
                 close_and_free_client(c);
                 return;
@@ -238,7 +238,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = recv(fd, c->crecv, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("recv() failed: %s", strerror(errno));
+                LOG_DEBUG("recv() failed: %s", strerror(errno));
                 close_and_free_remote(c);
                 close_and_free_client(c);
                 return;
@@ -248,7 +248,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             break; 
         }
         if (rc == 0) {
-            LOG_WARN("remote %d Connection closed", fd);
+            LOG_DEBUG("remote %d Connection closed", fd);
             close_and_free_remote(c);
             break;
         }

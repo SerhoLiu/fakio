@@ -54,9 +54,8 @@ static int ev_api_poll(event_loop *loop, struct timeval *tvp)
     memcpy(&state->crfds, &state->rfds, sizeof(fd_set));
     memcpy(&state->cwfds, &state->wfds, sizeof(fd_set));
 
-    LOG_INFO("Waiting on select()...\n");
+    LOG_DEBUG("Waiting on select()...\n");
     retval = select(loop->maxfd + 1, &state->crfds, &state->cwfds, NULL, tvp);
-    LOG_INFO("Select maxfd is %d\n", loop->maxfd);
 
     if (retval > 0) {
         for (j = 0; j <= loop->maxfd; j++) {
@@ -199,7 +198,6 @@ int process_events(event_loop *loop, int flags)
 
         // 处理文件事件
     numevents = ev_api_poll(loop, tvp);
-    //LOG_INFO("numevents is %d\n", numevents);
     for (j = 0; j < numevents; j++) {
             
         /* 根据 fired 数组，从 events 数组中取出事件 */
