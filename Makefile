@@ -1,17 +1,17 @@
-CC=gcc
-CFLAGS= -O1 -g -Wall
+CC = gcc
+CFLAGS = -O1 -g -Wall
 
-OBJ = fevent.o fnet.o fcrypt.o
+OBJ = config.o fevent.o fnet.o fcrypt.o 
 
-all: server local
+all: fakio-server fakio-local
 
-server: $(OBJ)
-	$(CC) $(CFLAGS) -o server  server.c $(OBJ)
+fakio-server: $(OBJ)
+	$(CC) $(CFLAGS) -o $@  fserver.c $(OBJ)
 
-local: $(OBJ)
-	$(CC) $(CFLAGS) -o local local.c $(OBJ)
+fakio-local: $(OBJ)
+	$(CC) $(CFLAGS) -o $@ flocal.c $(OBJ)
 
 
 .PHONY: clean
 clean:
-	-rm server local *.o
+	-rm fakio-server fakio-local *.o
