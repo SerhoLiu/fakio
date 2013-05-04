@@ -1,4 +1,5 @@
 #include "flog.h"
+#include "config.h"
 #include "fevent.h"
 #include "fnet.h"
 #include "fcrypt.h"
@@ -264,15 +265,15 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
 int main (int argc, char *argv[])
 {
-    //unsigned char* key = strdup("2343b3d537a54571f6060f40e14a4d9f");
-    //get_table(key);
+    load_config_file(&cfg, "fakio.conf");
+    
     event_loop *loop;
     loop = create_event_loop(100);
     if (loop == NULL) {
         LOG_ERROR("Create Event Loop Error!");
     }
     
-    int listen_sd = create_and_bind("0.0.0.0", "8888");
+    int listen_sd = create_and_bind(cfg.server, cfg.server_port);
     if (listen_sd < 0)  {
        LOG_ERROR("socket() failed");
     }

@@ -1,4 +1,5 @@
 #include "flog.h"
+#include "config.h"
 #include "fevent.h"
 #include "fnet.h"
 #include "fcrypt.h"
@@ -139,7 +140,7 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 memset(buffer, 0, BUFSIZE);
                 return;
             } else {
-                int remote_fd = create_and_connect("0.0.0.0", "8888");
+                int remote_fd = create_and_connect(cfg.server, cfg.server_port);
                 if (remote_fd < 0) {
                     LOG_WARN("remote don't onnection");
                     break;
@@ -149,7 +150,7 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 //encrypt(buffer, rc);
                 send(remote_fd, buffer, rc, 0);    
                 reply[1] = SOCKS_REP_SUCCEED;
-                int reply_len = socks5_get_server_reply("0.0.0.0", 1080, reply);
+                int reply_len = socks5_get_server_reply("0.0.0.0", cfg.local_port, reply);
                 send(client_fd, reply, reply_len, 0);
                 
                 context *c = malloc(sizeof(*c));
@@ -248,13 +249,15 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
 int main (int argc, char *argv[])
 {
+    load_config_file(&cfg, "fakio.conf");
+    
     event_loop *loop;
     loop = create_event_loop(100);
     if (loop == NULL) {
         LOG_ERROR("Create Event Loop Error!");
     }
     
-    int listen_sd = create_and_bind("0.0.0.0", "1080");
+    int listen_sd = create_and_bind("0.0.0.0", cfg.local_port);
     if (listen_sd < 0)  {
        LOG_ERROR("socket() failed");
     }
