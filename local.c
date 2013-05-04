@@ -1,5 +1,5 @@
 #include "flog.h"
-#include "event.h"
+#include "fevent.h"
 #include "fnet.h"
 #include "fcrypt.h"
 #include <sys/socket.h>
@@ -11,99 +11,56 @@
 #include <unistd.h>
 #include <signal.h>
 
-#define BUFSIZE 1440
 #define REPLY_SIZE 12
 
-int malloc_count = 0;
-
-typedef struct context {
-    int client_fd;
-    int remote_fd;
-    char csend[BUFSIZE];
-    char crecv[BUFSIZE];
-    int sendlen;
-    int recvlen;
-    struct event_loop *loop;
-} context;
-
-static void close_and_free_client(context *c)
-{
-    delete_event(c->loop, c->client_fd, EV_WRABLE);
-    delete_event(c->loop, c->client_fd, EV_RDABLE);
-    close(c->client_fd);
-    int x = c->client_fd;
-    c->client_fd = 0;
-    if (c->client_fd || c->remote_fd) {
-        return;
-    }
-    free(c);
-    LOG_WARN("%d I'm Free form client......................", x);    
-}
-
-static void close_and_free_remote(context *c)
-{
-    delete_event(c->loop, c->remote_fd, EV_WRABLE);
-    delete_event(c->loop, c->remote_fd, EV_RDABLE);
-    close(c->remote_fd);
-    int x = c->remote_fd;
-    c->remote_fd = 0;
-    if (c->client_fd || c->remote_fd) {
-        return;
-    }
-    free(c);
-    LOG_WARN("%d I'm Free form remote......................", x);     
-}
-
-
-
-void client_read_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata);
-void remote_write_cb(struct event_loop *loop, int fd, int mask, void *evdata);
-void remote_read_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 
 /* client 可写 */
-void client_write_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
     
-    printf("client recvlen %d\n", c->recvlen);
     if (c->recvlen == 0) {
         close_and_free_client(c);
         return;
     }
 
     while (1) {
-        int rc = send(fd, c->crecv, c->recvlen, 0);
+        int rc = send(fd, c->crecv+c->rnow, c->recvlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("send() for client %d failed: %s", fd, strerror(errno));
+                LOG_WARN("send() to client %d failed: %s", fd, strerror(errno));
                 close_and_free_client(c);
                 close_and_free_remote(c);
-                break;
+                return;
             }
             break; 
         }
         if (rc >= 0) {
+            
             c->recvlen -= rc;
             if (c->recvlen <= 0) {
-                printf("send client recvlen %d\n", rc);
-                //LOG_INFO("Send to client %d OK!!!!!!\n %s", c->client_fd, c->crecv);
+                c->rnow = 0;
                 delete_event(loop, fd, EV_WRABLE);
                 if (c->remote_fd == 0) {
                     close_and_free_client(c);
                 } else {
-                    create_event(loop, c->client_fd, EV_RDABLE, &client_read_cb, (void *)c); 
-                    create_event(loop, c->remote_fd, EV_RDABLE, &remote_read_cb, (void *)c);
+                    create_event(loop, fd, EV_RDABLE, &client_readable_cb, c); 
+                    create_event(loop, c->remote_fd, EV_RDABLE, &remote_readable_cb, c);
                 }
                 break;
+            } else {
+                c->rnow += rc;
             }
-            continue;
         }
     }  
 }
 
 
-void client_read_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
     
@@ -111,30 +68,26 @@ void client_read_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = recv(fd, c->csend, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("recv() failed: %s", strerror(errno));
+                LOG_WARN("recv() from client %d failed: %s", fd, strerror(errno));
                 close_and_free_client(c);
                 close_and_free_remote(c);
                 return;
             }
-            
             delete_event(loop, fd, EV_RDABLE);
             break; 
         }
         if (rc == 0) {
             LOG_WARN("client %d connection closed\n", fd);
             close_and_free_client(c);
-            LOG_WARN("context client %d and remote %d ", c->client_fd, c->remote_fd);
             break;
         }
         c->sendlen += rc;
-        //printf("from client read %s\n", c->csend);
-        if (c->sendlen > BUFSIZE - 1) {
-            delete_event(loop, fd, EV_RDABLE);
-            break;    
-        }
+        delete_event(loop, fd, EV_RDABLE);
+        break;    
     }
-    create_event(loop, c->remote_fd, EV_WRABLE, &remote_write_cb, (void *)c);
+    create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
 }
+
 
 void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
@@ -165,7 +118,6 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
 
     while (1) {
         int rc = recv(client_fd, buffer, BUFSIZE, 0);
-        printf("server and client %d talk recv rc %d\n", client_fd, rc);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_WARN("recv() failed: %s", strerror(errno));
@@ -174,14 +126,12 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
             return;
         }
         if (rc == 0) {
-            LOG_WARN("client %d Connection closed\n", client_fd);
+            LOG_WARN("client %d connection closed\n", client_fd);
             break;
         }
 
-        printf("server and client %d talk recv len %d\n", client_fd, rc);
         if (buffer[0] == SOCKS_VER && buffer[1] == SOCKS_NMETHODS && buffer[2] == SOCKS_NO_AUTH) {
             if (rc < 4) {
-                printf("socks5 firsr .......\n");
                 reply[0] = SOCKS_VER;
                 reply[1] = SOCKS_NO_AUTH;
                 //TODO........
@@ -189,13 +139,14 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 memset(buffer, 0, BUFSIZE);
                 return;
             } else {
-                printf("socks5 2..... .......\n");
-                int remote_fd = create_and_connect("0.0.0.0", "8000");
+                int remote_fd = create_and_connect("0.0.0.0", "8888");
                 if (remote_fd < 0) {
                     LOG_WARN("remote don't onnection");
                     break;
                 }
                 set_nonblocking(remote_fd); 
+                //.........
+                //encrypt(buffer, rc);
                 send(remote_fd, buffer, rc, 0);    
                 reply[1] = SOCKS_REP_SUCCEED;
                 int reply_len = socks5_get_server_reply("0.0.0.0", 1080, reply);
@@ -205,15 +156,15 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 if (c == NULL) {
                     LOG_ERROR("Malloc Error");
                 }
-                malloc_count++;
                 c->client_fd = client_fd;
                 c->remote_fd = remote_fd;
-                LOG_WARN("remote %d and client %d add.............", remote_fd, client_fd);
+                //LOG_WARN("remote %d and client %d add.............", remote_fd, client_fd);
                 c->sendlen = c->recvlen = 0;
+                c->rnow = c->snow = 0;
                 c->loop = loop;
 
                 delete_event(loop, client_fd, EV_RDABLE);
-                create_event(loop, c->client_fd, EV_RDABLE, &client_read_cb, c);
+                create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);
                 memset(buffer, 0, BUFSIZE);
                 return;
             }
@@ -229,19 +180,21 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
     memset(buffer, 0, BUFSIZE);
 }
 
-void remote_write_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
     
-    if (c->client_fd == 0) {
+    if (c->client_fd == 0 || c->sendlen == 0) {
         close_and_free_remote(c);
         return;
     }
+
     while (1) {
-        int rc = send(fd, c->csend, c->sendlen, 0);
+        //encrypt(c->csend, c->sendlen);
+        int rc = send(fd, c->csend+c->snow, c->sendlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_WARN("send() failed: %s", strerror(errno));
+                LOG_WARN("send() to remote %d failed: %s", fd, strerror(errno));
                 close_and_free_remote(c);
                 close_and_free_client(c);
                 return;
@@ -252,17 +205,17 @@ void remote_write_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             c->sendlen -= rc;
             if (c->sendlen <= 0) {
                 delete_event(loop, fd, EV_WRABLE);
-                create_event(loop, fd, EV_RDABLE, &remote_read_cb, c);
-                create_event(loop, c->client_fd, EV_RDABLE, &client_read_cb, c);      
+                create_event(loop, fd, EV_RDABLE, &remote_readable_cb, c);
+                create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);      
                 break;   
+            } else {
+                c->snow += rc;
             }
-            continue;
-        }
-        
+        }  
     }  
 }
 
-void remote_read_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
 
@@ -286,19 +239,11 @@ void remote_read_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
 
         c->recvlen += rc;
-        //printf("from remote read %s\n %d\n", c->crecv, rc);
-        if (c->recvlen > BUFSIZE - 5) {
-            delete_event(loop, fd, EV_RDABLE);
-            break;     
-        }  
+        //decrypt(c->crecv, c->recvlen);
+        delete_event(loop, fd, EV_RDABLE);
+        break;     
     }
-    create_event(loop, c->client_fd, EV_WRABLE, &client_write_cb, c);
-}
-
-void signal_handle()
-{
-    printf("malloc_count %d\n", malloc_count);
-    exit(0);
+    create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
 }
 
 int main (int argc, char *argv[])
@@ -319,7 +264,6 @@ int main (int argc, char *argv[])
     }
 
     create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, NULL);
-    signal(SIGINT, signal_handle);
     start_event_loop(loop);
     delete_event_loop(loop);
     
