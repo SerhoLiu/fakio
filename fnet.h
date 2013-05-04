@@ -39,7 +39,7 @@ int create_and_connect(const char *host, const char *port);
 void close_and_free_client(context *c);
 void close_and_free_remote(context *c);
 
-int socks5_get_server_reply(const char *ip, unsigned short port, char *reply);
+int socks5_get_server_reply(const char *ip, const char *port, char *reply);
 int socks5_connect_client(char *send, int buflen, int *len);
 
 #endif

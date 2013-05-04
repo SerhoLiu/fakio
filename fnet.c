@@ -144,12 +144,12 @@ void close_and_free_remote(context *c)
     if (c->client_fd || c->remote_fd) {
         return;
     }
-    LOG_WARN("free context from remote %d", x);
+    LOG_INFO("free context from remote %d", x);
     free(c);       
 }
 
 /* 使用 IPv4:port 格式生成服务器地址 */
-int socks5_get_server_reply(const char *ip, uint16_t port, char *reply)
+int socks5_get_server_reply(const char *ip, const char *port, char *reply)
 {
     if (reply == NULL) {
         return 0;
@@ -167,7 +167,7 @@ int socks5_get_server_reply(const char *ip, uint16_t port, char *reply)
         return -1;
     }
 
-    uint16_t ports = htons(port);
+    uint16_t ports = htons(atoi(port));
     *(uint16_t *)(reply + 8) = ports;
 
 #ifndef NDEBUG
