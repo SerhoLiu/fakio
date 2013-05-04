@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS= -O1 -g -Wall
 
-OBJ = event.o fnet.o fcrypt.o
+OBJ = fevent.o fnet.o fcrypt.o
 
 all: server local
 
