@@ -74,16 +74,3 @@ void load_config_file(config *cfg, const char *path)
     }
     fclose(f);
 }
-
-/*
-int main(int argc, char const *argv[])
-{
-    //const char *path = strdup("fakio.conf");
-    load_config_file(&cfg, "fakio.conf");
-    printf("%s\n", cfg.server);
-    printf("%s\n", cfg.server_port);
-    printf("%s\n", cfg.local_port);
-    printf("%s\n", cfg.key);
-    return 0;
-}
-*/
