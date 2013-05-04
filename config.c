@@ -38,7 +38,7 @@ static int parser_string(config *cfg, const char *str)
 
     int i = 0, j = 0;
     while (*str != '=') {
-        if (*str == '\n') return -1;
+        if (*str == '\n' || *str == '\0') return -1;
         if (*str != ' ') {
             key[i++] = *str;   
         }
@@ -46,7 +46,7 @@ static int parser_string(config *cfg, const char *str)
     }
     key[i] = '\0';
     
-    while (*str != '\n') {
+    while (*str != '\n' && *str != '\0') {
         if (*str != ' ' && *str != '=') {
             value[j++] = *str;
         }
@@ -68,9 +68,10 @@ void load_config_file(config *cfg, const char *path)
     }
 
     while (!feof(f)) {
-        fgets(buffer, 100, f);
+        if (fgets(buffer, 100, f) == NULL) continue;
         if (buffer[0] == '#' || buffer[0] == '\n') continue;
         r = parser_string(cfg, buffer);
+        memset(buffer, 0, 100);
     }
     fclose(f);
 }
@@ -78,8 +79,8 @@ void load_config_file(config *cfg, const char *path)
 /*
 int main(int argc, char const *argv[])
 {
-    const char *path = strdup("fakio.conf");
-    load_config_file(&cfg, path);
+    //const char *path = strdup("fakio.conf");
+    load_config_file(&cfg, "fakio.conf");
     printf("%s\n", cfg.server);
     printf("%s\n", cfg.server_port);
     printf("%s\n", cfg.local_port);
