@@ -1,5 +1,6 @@
 #include "fnet.h"
 #include "flog.h"
+#include "fevent.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <errno.h>
@@ -104,6 +105,49 @@ int create_and_connect(const char *host, const char *port)
     return create_and_bind_connect(host, port, CONNECT);
 }
 
+void close_and_free_client(context *c)
+{
+    if (c == NULL) {
+        return;
+    }
+
+    int x = c->client_fd;
+
+    if (c->client_fd != 0) {
+        delete_event(c->loop, c->client_fd, EV_WRABLE);
+        delete_event(c->loop, c->client_fd, EV_RDABLE);
+        close(c->client_fd);
+        c->client_fd = 0;
+    }
+
+    if (c->client_fd || c->remote_fd) {
+        return;
+    }
+    LOG_INFO("free context from client %d", x);
+    free(c);     
+}
+
+void close_and_free_remote(context *c)
+{
+    if (c == NULL) {
+        return;
+    }
+
+    int x = c->remote_fd;
+    if (c->remote_fd != 0) {
+        delete_event(c->loop, c->remote_fd, EV_WRABLE);
+        delete_event(c->loop, c->remote_fd, EV_RDABLE);
+        close(c->remote_fd);
+        c->remote_fd = 0;    
+    }
+    
+    if (c->client_fd || c->remote_fd) {
+        return;
+    }
+    LOG_WARN("free context from remote %d", x);
+    free(c);       
+}
+
 /* 使用 IPv4:port 格式生成服务器地址 */
 int socks5_get_server_reply(const char *ip, uint16_t port, char *reply)
 {
@@ -126,13 +170,14 @@ int socks5_get_server_reply(const char *ip, uint16_t port, char *reply)
     uint16_t ports = htons(port);
     *(uint16_t *)(reply + 8) = ports;
 
-   
+#ifndef NDEBUG
     int i;
     for (i = 0; i < 10; i++) {
         printf("%x ", *(reply+i));
     }
     printf("\n");
-
+#endif
+    
     return 10;
 }
 
