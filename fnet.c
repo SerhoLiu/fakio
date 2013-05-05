@@ -111,8 +111,6 @@ void close_and_free_client(context *c)
         return;
     }
 
-    //int x = c->client_fd;
-
     if (c->client_fd != 0) {
         delete_event(c->loop, c->client_fd, EV_WRABLE);
         delete_event(c->loop, c->client_fd, EV_RDABLE);
@@ -123,7 +121,6 @@ void close_and_free_client(context *c)
     if (c->client_fd || c->remote_fd) {
         return;
     }
-    //LOG_DEBUG("free context from client %d and c %p", x, c);
     free(c);     
 }
 
@@ -133,7 +130,6 @@ void close_and_free_remote(context *c)
         return;
     }
 
-    //int x = c->remote_fd;
     if (c->remote_fd != 0) {
         delete_event(c->loop, c->remote_fd, EV_WRABLE);
         delete_event(c->loop, c->remote_fd, EV_RDABLE);
@@ -144,7 +140,6 @@ void close_and_free_remote(context *c)
     if (c->client_fd || c->remote_fd) {
         return;
     }
-    //LOG_DEBUG("free context from remote %d and c %p", x, c);
     free(c);       
 }
 
