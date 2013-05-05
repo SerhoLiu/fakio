@@ -5,12 +5,10 @@
 #include "fcrypt.h"
 #include <sys/socket.h>
 #include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <signal.h>
 
 #define REPLY_SIZE 12
 
@@ -27,6 +25,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     context *c = (context *)evdata;
     
     if (c->recvlen == 0) {
+        LOG_DEBUG("close_and_free_client %p client %d", c, fd);
         close_and_free_client(c);
         return;
     }
@@ -36,7 +35,9 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("send() to client %d failed: %s", fd, strerror(errno));
+                LOG_DEBUG("close_and_free_client %p client %d", c, fd);
                 close_and_free_client(c);
+                LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
                 close_and_free_remote(c);
                 return;
             }
@@ -49,6 +50,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                 c->rnow = 0;
                 delete_event(loop, fd, EV_WRABLE);
                 if (c->remote_fd == 0) {
+                    LOG_DEBUG("close_and_free_client %p client %d", c, fd);
                     close_and_free_client(c);
                 } else {
                     create_event(loop, fd, EV_RDABLE, &client_readable_cb, c); 
@@ -72,7 +74,9 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
+                LOG_DEBUG("close_and_free_client %p client %d", c, fd);
                 close_and_free_client(c);
+                LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
                 close_and_free_remote(c);
                 return;
             }
@@ -81,11 +85,12 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
         if (rc == 0) {
             LOG_DEBUG("client %d connection closed\n", fd);
+            LOG_DEBUG("close_and_free_client %p client %d", c, fd);
             close_and_free_client(c);
             break;
         }
         c->sendlen += rc;
-        FCRYPT_ENCRYPT(&fctx, c->sendlen, c->csend);
+        FAKIO_ENCRYPT(&fctx, c->csend, c->sendlen);
         delete_event(loop, fd, EV_RDABLE);
         break;    
     }
@@ -149,8 +154,8 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                     break;
                 }
                 set_nonblocking(remote_fd); 
-                //.........
-                FCRYPT_ENCRYPT(&fctx, rc, buffer);
+
+                FAKIO_ENCRYPT(&fctx, buffer, rc);
                 send(remote_fd, buffer, rc, 0);    
                 reply[1] = SOCKS_REP_SUCCEED;
                 int reply_len = socks5_get_server_reply("0.0.0.0", cfg.local_port, reply);
@@ -160,9 +165,9 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 if (c == NULL) {
                     LOG_ERROR("Malloc Error");
                 }
+                LOG_DEBUG("client %d remote %d at %p", client_fd, remote_fd, c);
                 c->client_fd = client_fd;
                 c->remote_fd = remote_fd;
-                //LOG_WARN("remote %d and client %d add.............", remote_fd, client_fd);
                 c->sendlen = c->recvlen = 0;
                 c->rnow = c->snow = 0;
                 c->loop = loop;
@@ -189,17 +194,19 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     context *c = (context *)evdata;
     
     if (c->client_fd == 0 || c->sendlen == 0) {
+        LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
         close_and_free_remote(c);
         return;
     }
 
     while (1) {
-        //encrypt(c->csend, c->sendlen);
         int rc = send(fd, c->csend+c->snow, c->sendlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("send() to remote %d failed: %s", fd, strerror(errno));
+                LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
                 close_and_free_remote(c);
+                LOG_DEBUG("close_and_free_client %p client %d", c, fd);
                 close_and_free_client(c);
                 return;
             }
@@ -228,7 +235,9 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("recv() failed: %s", strerror(errno));
+                LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
                 close_and_free_remote(c);
+                LOG_DEBUG("close_and_free_client %p client %d", c, fd);
                 close_and_free_client(c);
                 return;
             }
@@ -238,12 +247,13 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
         if (rc == 0) {
             LOG_DEBUG("remote %d Connection closed", fd);
+            LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
             close_and_free_remote(c);
             break;
         }
 
         c->recvlen += rc;
-        FCRYPT_DECRYPT(&fctx, c->recvlen, c->crecv);
+        FAKIO_DECRYPT(&fctx, c->crecv, c->recvlen);
         delete_event(loop, fd, EV_RDABLE);
         break;     
     }
@@ -252,8 +262,12 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
 int main (int argc, char *argv[])
 {
-    load_config_file(&cfg, "fakio.conf");
-    FCRYPT_INIT(&fctx, cfg.key, MAX_KEY_LEN-1);
+    if (argc != 2) {
+        LOG_ERROR("Usage: %s --config_path\n", argv[0]);
+    }
+    load_config_file(&cfg, argv[1]);
+
+    FAKIO_INIT_CRYPT(&fctx, cfg.key, MAX_KEY_LEN);
 
     event_loop *loop;
     loop = create_event_loop(100);
@@ -271,6 +285,7 @@ int main (int argc, char *argv[])
     }
 
     create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, NULL);
+    LOG_INFO("Fakio Local Start...... Binding in 0.0.0.0:%s", cfg.local_port);
     start_event_loop(loop);
     delete_event_loop(loop);
     
