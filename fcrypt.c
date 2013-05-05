@@ -9,7 +9,14 @@
  *  Lead Maintainer: Paul Bakker <polarssl_maintainer at polarssl.org>
  */
 
-static void rc4_init(rc4_ctx *ctx, const unsigned char *key, unsigned int keylen )
+#define SWAP_BYTE(a, b) do {unsigned char t; t = (b); (b) = (a); (a) = t; } while (0)
+
+typedef struct {
+    int x, y;
+    unsigned char m[256];
+} arc4_ctx;
+
+static void arc4_init(arc4_ctx *ctx, const unsigned char *key, unsigned int keylen )
 {
     int i, j, a;
     unsigned int k;
@@ -36,7 +43,7 @@ static void rc4_init(rc4_ctx *ctx, const unsigned char *key, unsigned int keylen
 }
 
 
-int rc4_crypt(rc4_ctx *ctx, size_t length, unsigned char *buffer)
+static int arc4_crypt(arc4_ctx *ctx, size_t length, unsigned char *buffer)
 {
     int x, y, a, b;
     size_t i;
@@ -63,6 +70,46 @@ int rc4_crypt(rc4_ctx *ctx, size_t length, unsigned char *buffer)
 
 void fcrypt_init_ctx(fcrypt_ctx *fctx, const unsigned char *key, unsigned int keylen)
 {
-    rc4_init(&(fctx->en_ctx), key, keylen);
-    rc4_init(&(fctx->de_ctx), key, keylen);
+    arc4_ctx ctx;
+    arc4_init(&ctx, key, keylen);
+    
+    unsigned int i, j;
+    unsigned char table[256];
+
+    for(i = 0; i < 256; i++) {
+        table[i] = i;
+        fctx->en_table[i] = i;
+    }
+
+    for (j = 0; j < keylen; j++) {
+        arc4_crypt(&ctx, 256, table);
+        for(i = 0; i < 256; i++) {
+            if (table[i] < fctx->en_table[i]) {
+                SWAP_BYTE(fctx->en_table[i], fctx->en_table[table[i]]);
+            }
+        }    
+    }
+    
+    for (i = 0; i < 256; i++) {
+        fctx->de_table[fctx->en_table[i]] = i;
+    }
+}
+
+
+void fcrypt_encrypt(fcrypt_ctx *fctx, unsigned char *buf, int len)
+{
+    unsigned char *end = buf + len;
+    while (buf < end) {
+        *buf = fctx->en_table[*buf];
+        buf++;
+    }
+}
+
+void fcrypt_decrypt(fcrypt_ctx *fctx, unsigned char *buf, int len)
+{
+    unsigned char *end = buf + len;
+    while (buf < end) {
+        *buf = fctx->de_table[*buf];
+        buf++;
+    }
 }

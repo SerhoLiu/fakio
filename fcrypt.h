@@ -4,20 +4,22 @@
 #include <string.h>
 
 typedef struct {
-    int x, y;
-    unsigned char m[256];
-} rc4_ctx;
-
-typedef struct {
-    rc4_ctx en_ctx;
-    rc4_ctx de_ctx;
+    unsigned char en_table[256];
+    unsigned char de_table[256];
 } fcrypt_ctx;
 
-int rc4_crypt(rc4_ctx *ctx, size_t length, unsigned char *buffer);
 void fcrypt_init_ctx(fcrypt_ctx *fctx, const unsigned char *key, unsigned int keylen);
+void fcrypt_encrypt(fcrypt_ctx *fctx, unsigned char *buf, int len);
+void fcrypt_decrypt(fcrypt_ctx *fctx, unsigned char *buf, int len);
 
-#define FCRYPT_INIT(a, b, c) fcrypt_init_ctx((a), (b), (c))
-#define FCRYPT_ENCRYPT(a, b, c) rc4_crypt(&((a)->en_ctx), (b), (c))
-#define FCRYPT_DECRYPT(a, b, c) rc4_crypt(&((a)->de_ctx), (b), (c))
+#define FAKIO_INIT_CRYPT(a, b, c) fcrypt_init_ctx((a), (b), (c))
+
+#ifdef NCRYPT
+    #define FAKIO_ENCRYPT(a, b, c) (void)0
+    #define FAKIO_DECRYPT(a, b, c) (void)0
+#else    
+    #define FAKIO_ENCRYPT(a, b, c) fcrypt_encrypt((a), (b), (c))
+    #define FAKIO_DECRYPT(a, b, c) fcrypt_decrypt((a), (b), (c))
+#endif
 
 #endif
