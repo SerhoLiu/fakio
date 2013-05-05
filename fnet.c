@@ -111,7 +111,7 @@ void close_and_free_client(context *c)
         return;
     }
 
-    int x = c->client_fd;
+    //int x = c->client_fd;
 
     if (c->client_fd != 0) {
         delete_event(c->loop, c->client_fd, EV_WRABLE);
@@ -123,7 +123,7 @@ void close_and_free_client(context *c)
     if (c->client_fd || c->remote_fd) {
         return;
     }
-    LOG_DEBUG("free context from client %d", x);
+    //LOG_DEBUG("free context from client %d and c %p", x, c);
     free(c);     
 }
 
@@ -133,7 +133,7 @@ void close_and_free_remote(context *c)
         return;
     }
 
-    int x = c->remote_fd;
+    //int x = c->remote_fd;
     if (c->remote_fd != 0) {
         delete_event(c->loop, c->remote_fd, EV_WRABLE);
         delete_event(c->loop, c->remote_fd, EV_RDABLE);
@@ -144,12 +144,12 @@ void close_and_free_remote(context *c)
     if (c->client_fd || c->remote_fd) {
         return;
     }
-    LOG_DEBUG("free context from remote %d", x);
+    //LOG_DEBUG("free context from remote %d and c %p", x, c);
     free(c);       
 }
 
 /* 使用 IPv4:port 格式生成服务器地址 */
-int socks5_get_server_reply(const char *ip, const char *port, char *reply)
+int socks5_get_server_reply(const char *ip, const char *port, unsigned char *reply)
 {
     if (reply == NULL) {
         return 0;
@@ -169,24 +169,15 @@ int socks5_get_server_reply(const char *ip, const char *port, char *reply)
 
     uint16_t ports = htons(atoi(port));
     *(uint16_t *)(reply + 8) = ports;
-
-#ifndef NDEBUG
-    int i;
-    for (i = 0; i < 10; i++) {
-        printf("%x ", *(reply+i));
-    }
-    printf("\n");
-#endif
     
     return 10;
 }
 
 
-int socks5_connect_client(char *send, int buflen, int *len)
+int socks5_connect_client(unsigned char *send, int buflen, int *len)
 {
     
-    char addr[124];
-    char port[5];
+    char addr[124], port[5];
     uint16_t ports;
     
     if (buflen < 10) {
@@ -210,7 +201,10 @@ int socks5_connect_client(char *send, int buflen, int *len)
     } 
     else if (send[3] == SOCKS_ATYPE_DNAME) {
         uint8_t domain_len = *(uint8_t *)(send + 4);
-        strncpy(addr, send + 5, domain_len);
+        int i;
+        for (i = 0; i < domain_len; i++) {
+            addr[i] = *(send + 5 + i);
+        }
         addr[domain_len] = '\0';
         ports = ntohs(*(uint16_t*)(send + 4 + domain_len + 1));
         snprintf(port, 5, "%d", ports);
@@ -220,7 +214,7 @@ int socks5_connect_client(char *send, int buflen, int *len)
         LOG_WARN("unsupported addrtype: %d", send[3]);
         return -1;
     }
-    LOG_INFO("connecting %s : %s", addr, port);
+    LOG_INFO("Connecting %s:%s", addr, port);
     int client_fd = create_and_connect(addr, port);
 
     return client_fd;

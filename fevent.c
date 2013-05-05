@@ -123,6 +123,7 @@ void delete_event_loop(event_loop *loop)
 int create_event(event_loop *loop, int fd, int mask, 
                  ev_callback *cb, void *evdata)
 {
+    if (fd < 1) return -1;
     // fd 的数量超过 eventLoop 允许的最大数量
     if (fd >= loop->setsize) return -1;
     ev_event *ev = &loop->events[fd];
