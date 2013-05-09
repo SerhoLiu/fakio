@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 
+/* 配置参数名长度限制，包括结尾的 '\0' */
+#define MAX_ARGV_NAME_LEN 32
 
 static int get_config(config *cfg, const char *key, const char *value)
 {
@@ -31,7 +33,7 @@ static int get_config(config *cfg, const char *key, const char *value)
 
 static int parser_string(config *cfg, const char *str)
 {
-    char key[MAX_KEY_LEN], value[MAX_KEY_LEN];
+    char key[MAX_ARGV_NAME_LEN], value[MAX_SERVER_LEN];
     
     while (*str == ' ') str++;
     if (*str == '#' || *str == '\n' || *str == '\0') return -1;
@@ -42,15 +44,21 @@ static int parser_string(config *cfg, const char *str)
         if (*str != ' ') {
             key[i++] = *str;   
         }
-        str++; 
+        str++;
+        if (i > MAX_ARGV_NAME_LEN - 2) break;
     }
     key[i] = '\0';
     
+    if (i > MAX_ARGV_NAME_LEN - 2) {
+        while (*str != '=') str++;
+    }
+
     while (*str != '\n' && *str != '\0') {
         if (*str != ' ' && *str != '=') {
             value[j++] = *str;
         }
         str++;
+        if (j > MAX_SERVER_LEN - 2) break;
     }
     value[j] = '\0';
     int r = get_config(cfg, key, value);
@@ -60,7 +68,7 @@ static int parser_string(config *cfg, const char *str)
 void load_config_file(config *cfg, const char *path)
 {
     int r;
-    char buffer[100];
+    char buffer[MAX_ARGV_NAME_LEN + MAX_SERVER_LEN];
     
     FILE *f = fopen(path, "r");
     if (f == NULL) {
