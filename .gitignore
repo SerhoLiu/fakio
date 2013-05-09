@@ -1,4 +1,3 @@
 *.o
-test/*
 fakio-server
 fakio-local
