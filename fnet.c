@@ -80,7 +80,7 @@ int fnet_create_and_bind(const char *addr, int port)
     return sfd;
 }
 
-int fnet_create_and_connect(const char *addr, const char *port)
+int fnet_create_and_connect(const char *addr, const char *port, int blocking)
 {
     struct addrinfo hints;
     struct addrinfo *result, *rp;
@@ -99,26 +99,36 @@ int fnet_create_and_connect(const char *addr, const char *port)
         listen_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (listen_fd == -1)
             continue;
-        if (set_nonblocking(listen_fd) < 0) {
-            close(listen_fd);
-            continue;
+        
+        if (!blocking) {
+            if (set_nonblocking(listen_fd) < 0) {
+                close(listen_fd);
+                continue;
+            }    
         }
 
         /* 以非阻塞模式 connect，防止阻塞其它请求，超时时间是默认的，大概75s左右,
          * 如果timeout ，则会自动中断 connect 
          */
         if (connect(listen_fd, rp->ai_addr, rp->ai_addrlen) < 0) {
-            if (errno == EHOSTUNREACH) {
-                LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
-                close(listen_fd);
-                continue;
-            } else if (errno == EINPROGRESS) {
-                goto done;
+            if (!blocking) {
+                if (errno == EHOSTUNREACH) {
+                    LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+                    close(listen_fd);
+                    continue;
+                } else if (errno == EINPROGRESS) {
+                    goto done;
+                } else {
+                    LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+                    close(listen_fd);
+                    continue;
+                }   
             } else {
                 LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
-                close(listen_fd);
                 continue;
-            }
+            }    
+        } else {
+            goto done;
         }
     }
 

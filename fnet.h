@@ -12,6 +12,9 @@
 #define SOCKS_ATYPE_IPV4 0x01
 #define SOCKS_ATYPE_DNAME 0x03
 
+#define FNET_CONNECT_BLOCK 1
+#define FNET_CONNECT_NONBLOCK 0
+
 /* context define */
 #define BUFSIZE 1536
 
@@ -40,7 +43,7 @@ int set_nonblocking(int fd);
 int set_socket_option(int fd);
 
 int fnet_create_and_bind(const char *addr, int port);
-int fnet_create_and_connect(const char *addr, const char *port);
+int fnet_create_and_connect(const char *addr, const char *port, int blocking);
 
 void close_and_free_client(context *c);
 void close_and_free_remote(context *c);
