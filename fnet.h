@@ -15,7 +15,13 @@
 /* context define */
 #define BUFSIZE 1536
 
-typedef struct context {
+typedef struct {
+    char addr[100];
+    char port[6];
+    int rlen;
+} request;
+
+typedef struct {
     int client_fd;
     int remote_fd;
     
@@ -40,7 +46,7 @@ int create_and_connect(const char *host, const char *port);
 void close_and_free_client(context *c);
 void close_and_free_remote(context *c);
 
+int socks5_request_resolve(const unsigned char *buffer, int buflen, request *r);
 int socks5_get_server_reply(const char *ip, const char *port, unsigned char *reply);
-int socks5_connect_client(unsigned char *send, int buflen, int *len);
 
 #endif

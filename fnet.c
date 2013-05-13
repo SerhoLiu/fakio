@@ -213,11 +213,8 @@ int socks5_get_server_reply(const char *ip, const char *port, unsigned char *rep
     return 10;
 }
 
-
-int socks5_connect_client(unsigned char *send, int buflen, int *len)
+int socks5_request_resolve(const unsigned char *buffer, int buflen, request *r)
 {
-    
-    char addr[124], port[5];
     uint16_t ports;
     
     if (buflen < 10) {
@@ -226,36 +223,35 @@ int socks5_connect_client(unsigned char *send, int buflen, int *len)
     }
     
     /* 仅支持 TCP 连接方式 */
-    if (send[0] != SOCKS_VER || send[1] != SOCKS_CONNECT) {
+    if (buffer[0] != SOCKS_VER || buffer[1] != SOCKS_CONNECT) {
         LOG_WARN("only tcp connect mode");
         return -1;
     }
     /*  IPv4 */
-    if (send[3] == SOCKS_ATYPE_IPV4) {
-        if (inet_ntop(AF_INET, send + 4, addr, INET_ADDRSTRLEN) == NULL) {
+    if (buffer[3] == SOCKS_ATYPE_IPV4) {
+        if (inet_ntop(AF_INET, buffer + 4, r->addr, INET_ADDRSTRLEN) == NULL) {
             LOG_WARN("IPv4 Error %s", strerror(errno));
         }
-        ports = ntohs(*(uint16_t*)(send + 8));
-        snprintf(port, 5, "%d", ports);
-        *len = 10;
+        ports = ntohs(*(uint16_t*)(buffer + 8));
+        snprintf(r->port, 5, "%d", ports);
+        r->rlen = 10;
     } 
-    else if (send[3] == SOCKS_ATYPE_DNAME) {
-        uint8_t domain_len = *(uint8_t *)(send + 4);
+    else if (buffer[3] == SOCKS_ATYPE_DNAME) {
+        uint8_t domain_len = *(uint8_t *)(buffer + 4);
         int i;
         for (i = 0; i < domain_len; i++) {
-            addr[i] = *(send + 5 + i);
+            r->addr[i] = *(buffer + 5 + i);
         }
-        addr[domain_len] = '\0';
-        ports = ntohs(*(uint16_t*)(send + 4 + domain_len + 1));
-        snprintf(port, 5, "%d", ports);
-        *len = 7 + domain_len;
+        r->addr[domain_len] = '\0';
+        ports = ntohs(*(uint16_t*)(buffer + 4 + domain_len + 1));
+        snprintf(r->port, 5, "%d", ports);
+        r->rlen = 7 + domain_len;
     }
     else {
-        LOG_WARN("unsupported addrtype: %d", send[3]);
+        LOG_WARN("unsupported addrtype: %d", buffer[3]);
         return -1;
     }
-    LOG_INFO("Connecting %s:%s", addr, port);
-    int client_fd = create_and_connect(addr, port);
+    LOG_INFO("Connecting %s:%s", r->addr, r->port);
 
-    return client_fd;
+    return 1;   
 }
