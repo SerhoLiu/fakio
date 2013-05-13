@@ -28,13 +28,58 @@ int set_nonblocking(int fd)
     return 0;
 }
 
-int set_sock_option(int fd)
+int set_socket_option(int fd)
 {
     int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+        LOG_WARN("setsockopt SO_REUSEADDR: %s", strerror(errno));
+        return -1;   
+    }
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt)) == -1) {
+        LOG_WARN("setsockopt TCP_NODELAY: %s", strerror(errno));
+        return -1;
+    }
+
     return 1;
 }
+
+int fnet_create_and_bind(const char *addr, int port)
+{
+    struct sockaddr_in sa;
+
+    int sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd < 0) {
+        LOG_WARN("can't create socket: %s", strerror(errno));
+    }
+
+    if (set_socket_option(sfd) < 0) {
+        LOG_WARN("set socket option error");
+    }
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(port);
+    sa.sin_addr.s_addr = htonl(INADDR_ANY);
+    
+    if (addr && inet_pton(AF_INET, addr, &sa.sin_addr) != 1) {
+        LOG_WARN("invalid bind address");
+        close(sfd);
+        return -1;
+    }
+
+    if (bind(sfd, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
+        LOG_WARN("bind: %s", strerror(errno));
+        close(sfd);
+        return -1;
+    }
+
+    if (set_nonblocking(sfd) < 0) {
+        LOG_WARN("set nonblocking error");
+        return -1;
+    }
+    return sfd;
+}
+
 
 static int create_and_bind_connect(const char *host, const char *port, int type)
 {
@@ -57,7 +102,7 @@ static int create_and_bind_connect(const char *host, const char *port, int type)
         listen_sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (listen_sock == -1)
             continue;
-        set_sock_option(listen_sock);
+        set_socket_option(listen_sock);
         
         int s = 0;
         if (type == BIND) {

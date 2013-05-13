@@ -31,8 +31,9 @@ typedef struct context {
 } context;
 
 int set_nonblocking(int fd);
-int set_sock_option(int fd);
+int set_socket_option(int fd);
 
+int fnet_create_and_bind(const char *adder, int port);
 int create_and_bind(const char *host, const char *port);
 int create_and_connect(const char *host, const char *port);
 
