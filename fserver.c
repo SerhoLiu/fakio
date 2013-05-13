@@ -48,7 +48,6 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
              * c->recvlen - rc 中的数据，因此应该将其移到 recv buffer 前面
              */ 
             c->recvlen -= rc;
-
             /* OK，数据一次性发送完毕，不需要特殊处理 */
             if (c->recvlen <= 0) {
                 c->rnow = 0;
@@ -127,8 +126,9 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
 void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    int len = 0, remote_fd = fd;
+    request r;
     unsigned char buffer[BUFSIZE];
+    int remote_fd = fd;
 
     /* 此处 while 是比较"脏"的用法 */
     while (1) {
@@ -155,17 +155,23 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 break;
             }
 
-            int client_fd = socks5_connect_client(buffer, rc, &len);
+            if (socks5_request_resolve(buffer, rc, &r) < 0) {
+                LOG_WARN("socks5 request resolve error");
+            }
+            
+            int client_fd = fnet_create_and_connect(r.addr, r.port, FNET_CONNECT_NONBLOCK);
             if (client_fd < 0) {
                 break;
             }
-            set_nonblocking(client_fd);
-            
+            if (set_socket_option(client_fd) < 0) {
+                LOG_WARN("set socket option error");
+            }
             context *c = malloc(sizeof(*c));
             if (c == NULL) {
                 LOG_WARN("malloc new context errno");
                 break;
             }
+
             LOG_DEBUG("client %d remote %d at %p", client_fd, remote_fd, c);
             c->client_fd = client_fd;
             c->remote_fd = remote_fd;
@@ -176,9 +182,9 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
             delete_event(loop, remote_fd, EV_RDABLE);
             
             /* buffer 中可能含有其它需要发送到 client 的数据 */
-            if (rc > len) {
-                memcpy(c->crecv, buffer+len, rc-len);
-                c->recvlen = rc - len;
+            if (rc > r.rlen) {
+                memcpy(c->crecv, buffer+r.rlen, rc-r.rlen);
+                c->recvlen = rc - r.rlen;
                 create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
             } else {
                 create_event(loop, remote_fd, EV_RDABLE, &remote_readable_cb, c);    

@@ -111,7 +111,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                 continue;
             }
             set_nonblocking(client_fd);
-            set_sock_option(client_fd);
+            set_socket_option(client_fd);
 
             LOG_DEBUG("New client incoming connection - %d\n", client_fd);
             create_event(loop, client_fd, EV_RDABLE, &server_client_reply_cb, NULL);
@@ -124,6 +124,7 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
 {
     int client_fd = fd;
     unsigned char buffer[BUFSIZE], reply[REPLY_SIZE];
+    request r;
 
     while (1) {
         int rc = recv(client_fd, buffer, BUFSIZE, 0);
@@ -148,19 +149,28 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 memset(buffer, 0, BUFSIZE);
                 return;
             } else {
-                int remote_fd = create_and_connect(cfg.server, cfg.server_port);
+                int remote_fd = fnet_create_and_connect(cfg.server, cfg.server_port, FNET_CONNECT_BLOCK);
                 if (remote_fd < 0) {
                     LOG_WARN("remote don't onnection");
                     break;
                 }
-                set_nonblocking(remote_fd); 
 
+                if (set_nonblocking(client_fd) < 0) {
+                    LOG_WARN("set socket nonblocking error");
+                }
+                if (set_socket_option(client_fd) < 0) {
+                    LOG_WARN("set socket option error");
+                }
+                /* 打印请求 */
+                socks5_request_resolve(buffer, rc, &r);
+                
                 FAKIO_ENCRYPT(&fctx, buffer, rc);
-                send(remote_fd, buffer, rc, 0);    
+                send(remote_fd, buffer, rc, 0);
+
                 reply[1] = SOCKS_REP_SUCCEED;
                 int reply_len = socks5_get_server_reply("0.0.0.0", cfg.local_port, reply);
                 send(client_fd, reply, reply_len, 0);
-                
+
                 context *c = malloc(sizeof(*c));
                 if (c == NULL) {
                     LOG_ERROR("Malloc Error");
@@ -275,7 +285,7 @@ int main (int argc, char *argv[])
         LOG_ERROR("Create Event Loop Error!");
     }
     
-    int listen_sd = create_and_bind("0.0.0.0", cfg.local_port);
+    int listen_sd = fnet_create_and_bind(NULL, 1080);
     if (listen_sd < 0)  {
        LOG_ERROR("socket() failed");
     }
