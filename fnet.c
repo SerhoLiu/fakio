@@ -80,74 +80,55 @@ int fnet_create_and_bind(const char *addr, int port)
     return sfd;
 }
 
-
-static int create_and_bind_connect(const char *host, const char *port, int type)
+int fnet_create_and_connect(const char *addr, const char *port)
 {
     struct addrinfo hints;
     struct addrinfo *result, *rp;
-    int listen_sock = 0;
+    int listen_fd = 0;
 
     memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_INET; 
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
+    hints.ai_family = AF_INET;        /* IPv4 Only */ 
+    hints.ai_socktype = SOCK_STREAM;  /* TCP Only */
 
-    int err = getaddrinfo(host, port, &hints, &result);
+    int err = getaddrinfo(addr, port, &hints, &result);
     if (err != 0) {
-        LOG_WARN("getaddrinfo: %s\n", gai_strerror(err));
+        LOG_WARN("%s:%s getaddrinfo: %s", addr, port, gai_strerror(err));
         return -1;
     }
-    
     for (rp = result; rp != NULL; rp = rp->ai_next) {
-        listen_sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if (listen_sock == -1)
+        listen_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (listen_fd == -1)
             continue;
-        set_socket_option(listen_sock);
-        
-        int s = 0;
-        if (type == BIND) {
-            s = bind(listen_sock, rp->ai_addr, rp->ai_addrlen);
-            if (s == 0) {
-                break;
+        if (set_nonblocking(listen_fd) < 0) {
+            close(listen_fd);
+            continue;
+        }
+
+        /* 以非阻塞模式 connect，防止阻塞其它请求，超时时间是默认的，大概75s左右,
+         * 如果timeout ，则会自动中断 connect 
+         */
+        if (connect(listen_fd, rp->ai_addr, rp->ai_addrlen) < 0) {
+            if (errno == EHOSTUNREACH) {
+                LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+                close(listen_fd);
+                continue;
+            } else if (errno == EINPROGRESS) {
+                goto done;
             } else {
-                LOG_WARN("bind %s:%s %s", host, port, strerror(errno));
-                return -1;
-            }
-        } else if (type == CONNECT) {
-            s = connect(listen_sock, rp->ai_addr, rp->ai_addrlen);
-            if (s == 0) {
-                break;
-            } else {
-                LOG_WARN("connect %s:%s %s", host, port, strerror(errno));
-                return -1;
+                LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+                close(listen_fd);
+                continue;
             }
         }
-        close(listen_sock);
     }
 
     if (rp == NULL) {
-        if (type == BIND) {
-            LOG_WARN("bind %s:%s %s", host, port, strerror(errno));
-            return -1;    
-        }
-        if (type == CONNECT) {
-            LOG_WARN("connect %s:%s %s", host, port, strerror(errno));
-            return -1;
-        }
+        LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
     }
 
-    freeaddrinfo(result);
-    return listen_sock;
-}
-
-int create_and_bind(const char *host, const char *port)
-{
-    return create_and_bind_connect(host, port, BIND);
-}
-
-int create_and_connect(const char *host, const char *port)
-{
-    return create_and_bind_connect(host, port, CONNECT);
+done:
+    freeaddrinfo(rp);
+    return listen_fd;
 }
 
 void close_and_free_client(context *c)
