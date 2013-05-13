@@ -3,15 +3,13 @@
 #include "fevent.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <netinet/tcp.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#define BIND 0
-#define CONNECT 1
 
 int set_nonblocking(int fd)
 {
@@ -43,7 +41,7 @@ int set_socket_option(int fd)
     return 1;
 }
 
-int fnet_create_and_bind(const char *addr, int port)
+int fnet_create_and_bind(const char *addr, const char *port)
 {
     struct sockaddr_in sa;
 
@@ -58,7 +56,7 @@ int fnet_create_and_bind(const char *addr, int port)
 
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
-    sa.sin_port = htons(port);
+    sa.sin_port = htons(atoi(port));
     sa.sin_addr.s_addr = htonl(INADDR_ANY);
     
     if (addr && inet_pton(AF_INET, addr, &sa.sin_addr) != 1) {

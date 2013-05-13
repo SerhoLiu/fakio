@@ -285,7 +285,8 @@ int main (int argc, char *argv[])
         LOG_ERROR("Create Event Loop Error!");
     }
     
-    int listen_sd = fnet_create_and_bind(NULL, 1080);
+    /* NULL is 0.0.0.0 */
+    int listen_sd = fnet_create_and_bind(NULL, cfg.local_port);
     if (listen_sd < 0)  {
        LOG_ERROR("socket() failed");
     }

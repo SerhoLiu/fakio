@@ -297,7 +297,9 @@ int main (int argc, char *argv[])
         LOG_ERROR("Create Event Loop Error!");
     }
     
-    int listen_sd = fnet_create_and_bind(NULL, 8888);
+    /* NULL is 0.0.0.0 */
+    int listen_sd = fnet_create_and_bind(NULL, cfg.server_port);
+    
     if (listen_sd < 0) {
         LOG_WARN("create server bind error");
     }
