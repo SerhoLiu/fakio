@@ -309,6 +309,7 @@ int main (int argc, char *argv[])
 
     create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, NULL);
     LOG_INFO("Fakio Server Start...... Binding in %s:%s", cfg.server, cfg.server_port);
+    LOG_INFO("Fakio Server Event Loop Start, Use %s", get_event_api_name());
     start_event_loop(loop);
     delete_event_loop(loop);
     
