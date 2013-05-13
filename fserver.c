@@ -116,7 +116,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                 continue;
             }
             set_nonblocking(remote_fd);
-            set_sock_option(remote_fd);
+            set_socket_option(remote_fd);
 
             LOG_DEBUG("new remote %d comming connection", remote_fd);
             create_event(loop, remote_fd, EV_RDABLE, &server_remote_reply_cb, NULL);
@@ -291,13 +291,12 @@ int main (int argc, char *argv[])
         LOG_ERROR("Create Event Loop Error!");
     }
     
-    int listen_sd = create_and_bind(cfg.server, cfg.server_port);
-    if (listen_sd < 0)  {
-       LOG_ERROR("socket() failed");
+    int listen_sd = fnet_create_and_bind(NULL, 8888);
+    if (listen_sd < 0) {
+        LOG_WARN("create server bind error");
     }
-    set_nonblocking (listen_sd);
     if (listen(listen_sd, SOMAXCONN) == -1) {
-        LOG_ERROR("socket() failed");
+        LOG_ERROR("create server listen error");
     }
 
     create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, NULL);
