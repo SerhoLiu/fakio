@@ -68,6 +68,7 @@ static int arc4_crypt(arc4_ctx *ctx, size_t length, unsigned char *buffer)
     return 0;
 }
 
+/* 不能保证使用不同的 key 生成打得加密解密转换表一定不同 */
 void fcrypt_init_ctx(fcrypt_ctx *fctx, const unsigned char *key, unsigned int keylen)
 {
     arc4_ctx ctx;
