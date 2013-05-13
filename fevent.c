@@ -10,6 +10,116 @@
 #include "flog.h"
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#ifdef USE_EPOLL
+
+#include <sys/epoll.h>
+
+typedef struct ev_api_state {
+    int epfd;
+    struct epoll_event *events;
+} ev_api_state;
+
+static int ev_api_create(event_loop *loop)
+{
+    ev_api_state *state = malloc(sizeof(ev_api_state));
+    if (state == NULL) return -1;
+    
+    state->events = malloc(sizeof(struct epoll_event) *loop->setsize);
+    if (state->events == NULL) {
+        free(state);
+        return -1;
+    }
+    state->epfd = epoll_create(1024); /* 1024 is just an hint for the kernel */
+    if (state->epfd == -1) {
+        free(state->events);
+        free(state);
+        return -1;
+    }
+    loop->apidata = state;
+    return 0;
+}
+
+static void ev_api_free(event_loop *loop)
+{
+    ev_api_state *state = loop->apidata;
+    close(state->epfd);
+    free(state->events);
+    free(state);
+}
+
+static int ev_api_addevent(event_loop *loop, int fd, int mask)
+{
+    ev_api_state *state = loop->apidata;
+    struct epoll_event ee;
+    
+    int op = loop->events[fd].mask == EV_NONE ?
+            EPOLL_CTL_ADD : EPOLL_CTL_MOD;
+
+    ee.events = 0;
+    mask |= loop->events[fd].mask; /* Merge old events */
+    if (mask & EV_RDABLE) ee.events |= EPOLLIN;
+    if (mask & EV_WRABLE) ee.events |= EPOLLOUT;
+    ee.data.u64 = 0;
+    ee.data.fd = fd;
+    if (epoll_ctl(state->epfd, op, fd, &ee) == -1) return -1;
+    return 0;
+}
+
+static void ev_api_delevent(event_loop *loop, int fd, int mask)
+{
+    ev_api_state *state = loop->apidata;
+    struct epoll_event ee;
+    int nmask = loop->events[fd].mask & (~mask);
+
+    ee.events = 0;
+    if (nmask & EV_RDABLE) ee.events |= EPOLLIN;
+    if (nmask & EV_WRABLE) ee.events |= EPOLLOUT;
+    ee.data.u64 = 0; /* avoid valgrind warning */
+    ee.data.fd = fd;
+    if (nmask != EV_NONE) {
+        epoll_ctl(state->epfd, EPOLL_CTL_MOD, fd, &ee);
+    } else {
+        /* Note, Kernel < 2.6.9 requires a non null event pointer even for
+         * EPOLL_CTL_DEL. */
+        epoll_ctl(state->epfd, EPOLL_CTL_DEL, fd, &ee);
+    }
+}
+
+static int ev_api_poll(event_loop *loop, struct timeval *tvp)
+{
+    ev_api_state *state = loop->apidata;
+    int retval, numevents = 0;
+
+    retval = epoll_wait(state->epfd, state->events, loop->setsize,
+            tvp ? (tvp->tv_sec*1000 + tvp->tv_usec/1000) : -1);
+    if (retval > 0) {
+        int j;
+
+        numevents = retval;
+        for (j = 0; j < numevents; j++) {
+            int mask = 0;
+            struct epoll_event *e = state->events+j;
+
+            if (e->events & EPOLLIN) mask |= EV_RDABLE;
+            if (e->events & EPOLLOUT) mask |= EV_WRABLE;
+            if (e->events & EPOLLERR) mask |= EV_WRABLE;
+            if (e->events & EPOLLHUP) mask |= EV_WRABLE;
+            loop->fireds[j].fd = e->data.fd;
+            loop->fireds[j].mask = mask;
+        }
+    }
+    return numevents;
+}
+
+static char *ev_api_name(void)
+{
+    return "epoll";
+}
+
+#else
+
 #include <sys/select.h>
 
 typedef struct ev_api_state {
@@ -62,7 +172,6 @@ static int ev_api_poll(event_loop *loop, struct timeval *tvp)
     memcpy(&state->crfds, &state->rfds, sizeof(fd_set));
     memcpy(&state->cwfds, &state->wfds, sizeof(fd_set));
 
-    LOG_DEBUG("Waiting on select()...\n");
     retval = select(loop->maxfd + 1, &state->crfds, &state->cwfds, NULL, tvp);
 
     if (retval > 0) {
@@ -83,6 +192,12 @@ static int ev_api_poll(event_loop *loop, struct timeval *tvp)
     return numevents;
 }
 
+static char *ev_api_name(void)
+{
+    return "select";
+}
+
+#endif
 
 // 创建一个新的事件状态
 event_loop *create_event_loop(int setsize)
@@ -185,7 +300,6 @@ int get_event_mask(event_loop *loop, int fd)
     return ev->mask;
 }
 
-
 int process_events(event_loop *loop, int flags)
 {
     int processed = 0, numevents;
@@ -231,6 +345,11 @@ int process_events(event_loop *loop, int flags)
     }
     
     return processed;
+}
+
+char *get_event_api_name(void)
+{
+    return ev_api_name();
 }
 
 void start_event_loop(event_loop *loop)

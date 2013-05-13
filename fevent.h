@@ -43,6 +43,7 @@ typedef struct event_loop {
 event_loop *create_event_loop(int setsize);
 void delete_event_loop(event_loop *loop);
 int process_events(event_loop *loop, int flags);
+char *get_event_api_name(void);
 void start_event_loop(event_loop *loop);
 void stop_event_loop(event_loop *loop);
 
