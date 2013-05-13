@@ -1,6 +1,12 @@
 CC = gcc
 CFLAGS = -O1 -g -Wall -D NDEBUG
 
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S), Linux)
+	CFLAGS += -D USE_EPOLL
+endif
+
 OBJ = config.o fevent.o fnet.o fcrypt.o 
 
 all: fakio-server fakio-local
