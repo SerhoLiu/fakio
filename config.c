@@ -67,7 +67,6 @@ static int parser_string(config *cfg, const char *str)
 
 void load_config_file(config *cfg, const char *path)
 {
-    int r;
     char buffer[MAX_ARGV_NAME_LEN + MAX_SERVER_LEN];
     
     FILE *f = fopen(path, "r");
@@ -78,7 +77,7 @@ void load_config_file(config *cfg, const char *path)
     while (!feof(f)) {
         if (fgets(buffer, 100, f) == NULL) continue;
         if (buffer[0] == '#' || buffer[0] == '\n') continue;
-        r = parser_string(cfg, buffer);
+        parser_string(cfg, buffer);
     }
     fclose(f);
 }
