@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O1 -g -Wall -D NDEBUG
+CFLAGS = -O2 -Wall -D NDEBUG
 
 UNAME_S := $(shell uname -s)
 
