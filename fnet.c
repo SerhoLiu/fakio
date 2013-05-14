@@ -115,7 +115,7 @@ int fnet_create_and_connect(const char *addr, const char *port, int blocking)
                     close(listen_fd);
                     continue;
                 } else if (errno == EINPROGRESS) {
-                    goto done;
+                    goto end;
                 } else {
                     LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
                     close(listen_fd);
@@ -126,15 +126,19 @@ int fnet_create_and_connect(const char *addr, const char *port, int blocking)
                 continue;
             }    
         } else {
-            goto done;
+            goto end;
         }
     }
 
     if (rp == NULL) {
         LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+        goto done;
     }
 
 done:
+    listen_fd = -1;
+
+end:
     freeaddrinfo(rp);
     return listen_fd;
 }
