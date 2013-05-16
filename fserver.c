@@ -212,7 +212,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         close_and_free_remote(c);
         return;
     }
-
+    LOG_WARN("before c->snow = %d c->sendlen = %d", c->snow, c->sendlen);
     while (1) {
         int rc = send(fd, c->csend + c->snow, c->sendlen, 0);
         LOG_WARN("rc = %d c->snow = %d c->sendlen = %d", rc, c->snow, c->sendlen);
