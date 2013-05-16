@@ -66,6 +66,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
+    LOG_WARN("bef c->sendlen = %d", c->sendlen);
 
     while (1) {
         int rc = recv(fd, c->csend, BUFSIZE, 0);
