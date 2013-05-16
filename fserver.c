@@ -94,6 +94,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
          * 尽可能的多接收数据后再进行发送
          * 目前是不管多少，收到即发
          */
+        LOG_WARN("rc = %d c->sendlen = %d", rc, c->sendlen);
         FAKIO_ENCRYPT(&fctx, c->csend, c->sendlen);
         delete_event(loop, fd, EV_RDABLE);
         break;    
