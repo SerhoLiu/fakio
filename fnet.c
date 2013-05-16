@@ -153,6 +153,7 @@ void close_and_free_client(context *c)
         delete_event(c->loop, c->client_fd, EV_WRABLE);
         delete_event(c->loop, c->client_fd, EV_RDABLE);
         close(c->client_fd);
+        c->sendlen = 0;
         c->client_fd = 0;
     }
 
@@ -172,6 +173,7 @@ void close_and_free_remote(context *c)
         delete_event(c->loop, c->remote_fd, EV_WRABLE);
         delete_event(c->loop, c->remote_fd, EV_RDABLE);
         close(c->remote_fd);
+        c->recvlen = 0;
         c->remote_fd = 0;    
     }
     
