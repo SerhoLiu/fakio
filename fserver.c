@@ -213,6 +213,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
     while (1) {
         int rc = send(fd, c->csend + c->snow, c->sendlen, 0);
+        LOG_WARN("rc = %d c->snow = %d c->sendlen = %d", rc, c->snow, c->sendlen);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("send() failed to remote %d: %s", fd, strerror(errno));
