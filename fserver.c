@@ -66,7 +66,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-    LOG_WARN("bef c->sendlen = %d", c->sendlen);
+    LOG_WARN("bef fd %d c->sendlen = %d", fd, c->sendlen);
 
     while (1) {
         int rc = recv(fd, c->csend, BUFSIZE, 0);
@@ -95,7 +95,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
          * 尽可能的多接收数据后再进行发送
          * 目前是不管多少，收到即发
          */
-        LOG_WARN("rc = %d c->sendlen = %d", rc, c->sendlen);
+        LOG_WARN("fd %d rc = %d c->sendlen = %d", fd, rc, c->sendlen);
         FAKIO_ENCRYPT(&fctx, c->csend, c->sendlen);
         delete_event(loop, fd, EV_RDABLE);
         break;    
@@ -212,10 +212,10 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         close_and_free_remote(c);
         return;
     }
-    LOG_WARN("before c->snow = %d c->sendlen = %d", c->snow, c->sendlen);
+    LOG_WARN("fd %d before c->snow = %d c->sendlen = %d", fd, c->snow, c->sendlen);
     while (1) {
         int rc = send(fd, c->csend + c->snow, c->sendlen, 0);
-        LOG_WARN("rc = %d c->snow = %d c->sendlen = %d", rc, c->snow, c->sendlen);
+        LOG_WARN("fd %d rc = %d c->snow = %d c->sendlen = %d", fd, rc, c->snow, c->sendlen);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("send() failed to remote %d: %s", fd, strerror(errno));
