@@ -68,7 +68,11 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-    
+    if (c->sendlen > 0) {
+        delete_event(loop, fd, EV_RDABLE);
+        return;    
+    }
+
     while (1) {
         int rc = recv(fd, c->csend, BUFSIZE, 0);
         if (rc < 0) {
@@ -239,7 +243,11 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-
+    if (c->recvlen > 0) {
+        delete_event(loop, fd, EV_RDABLE);
+        return;    
+    }
+    
     while (1) {
         int rc = recv(fd, c->crecv, BUFSIZE, 0);
         if (rc < 0) {

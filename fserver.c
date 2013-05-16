@@ -66,6 +66,10 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
+    if (c->sendlen > 0) {
+        delete_event(loop, fd, EV_RDABLE);
+        return;
+    }
 
     while (1) {
         int rc = recv(fd, c->csend, BUFSIZE, 0);
@@ -215,7 +219,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int rc = send(fd, c->csend + c->snow, c->sendlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_DEBUG("send() failed: %s", strerror(errno));
+                LOG_DEBUG("send() failed to remote %d: %s", fd, strerror(errno));
                 LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
                 close_and_free_remote(c);
                 LOG_DEBUG("close_and_free_client %p client %d", c, fd);
@@ -250,12 +254,16 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
+    if (c->recvlen > 0) {
+        delete_event(loop, fd, EV_RDABLE);
+        return;    
+    }
 
     while (1) {
         int rc = recv(fd, c->crecv, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
-                LOG_DEBUG("recv() failed: %s", strerror(errno));
+                LOG_DEBUG("recv() failed form remote %d: %s", fd, strerror(errno));
                 LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
                 close_and_free_remote(c);
                 LOG_DEBUG("close_and_free_client %p client %d", c, fd);
