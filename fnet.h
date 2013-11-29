@@ -15,29 +15,11 @@
 #define FNET_CONNECT_BLOCK 1
 #define FNET_CONNECT_NONBLOCK 0
 
-/* context define */
-#define BUFSIZE 1536
-
 typedef struct {
     char addr[100];
     char port[6];
     int rlen;
 } request;
-
-typedef struct {
-    int client_fd;
-    int remote_fd;
-    
-    unsigned char csend[BUFSIZE];
-    int sendlen;
-    int snow;
-    
-    unsigned char crecv[BUFSIZE];
-    int recvlen;
-    int rnow;
-
-    struct event_loop *loop;
-} context;
 
 int set_nonblocking(int fd);
 int set_socket_option(int fd);
@@ -45,8 +27,6 @@ int set_socket_option(int fd);
 int fnet_create_and_bind(const char *addr, const char *port);
 int fnet_create_and_connect(const char *addr, const char *port, int blocking);
 
-void close_and_free_client(context *c);
-void close_and_free_remote(context *c);
 
 int socks5_request_resolve(const unsigned char *buffer, int buflen, request *r);
 int socks5_get_server_reply(const char *ip, const char *port, unsigned char *reply);

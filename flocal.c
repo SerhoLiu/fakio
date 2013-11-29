@@ -3,6 +3,7 @@
 #include "fevent.h"
 #include "fnet.h"
 #include "fcrypt.h"
+#include "fcontext.h"
 #include <sys/socket.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -13,6 +14,7 @@
 #define REPLY_SIZE 12
 
 static fcrypt_ctx fctx;
+static context_list *list;
 
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata);
@@ -25,8 +27,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     context *c = (context *)evdata;
     
     if (c->recvlen == 0) {
-        LOG_DEBUG("close_and_free_client %p client %d", c, fd);
-        close_and_free_client(c);
+        context_list_remove(list, c, MASK_CLIENT);
         return;
     }
 
@@ -35,10 +36,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("send() to client %d failed: %s", fd, strerror(errno));
-                LOG_DEBUG("close_and_free_client %p client %d", c, fd);
-                close_and_free_client(c);
-                LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
-                close_and_free_remote(c);
+                context_list_remove(list, c, MASK_CLIENT|MASK_REMOTE);
                 return;
             }
             break; 
@@ -50,8 +48,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                 c->rnow = 0;
                 delete_event(loop, fd, EV_WRABLE);
                 if (c->remote_fd == 0) {
-                    LOG_DEBUG("close_and_free_client %p client %d", c, fd);
-                    close_and_free_client(c);
+                    context_list_remove(list, c, MASK_CLIENT);
                 } else {
                     create_event(loop, fd, EV_RDABLE, &client_readable_cb, c); 
                     create_event(loop, c->remote_fd, EV_RDABLE, &remote_readable_cb, c);
@@ -78,10 +75,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
-                LOG_DEBUG("close_and_free_client %p client %d", c, fd);
-                close_and_free_client(c);
-                LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
-                close_and_free_remote(c);
+                context_list_remove(list, c, MASK_CLIENT|MASK_REMOTE);
                 return;
             }
             delete_event(loop, fd, EV_RDABLE);
@@ -89,8 +83,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
         if (rc == 0) {
             LOG_DEBUG("client %d connection closed\n", fd);
-            LOG_DEBUG("close_and_free_client %p client %d", c, fd);
-            close_and_free_client(c);
+            context_list_remove(list, c, MASK_CLIENT);
             break;
         }
         c->sendlen += rc;
@@ -175,7 +168,7 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 int reply_len = socks5_get_server_reply("0.0.0.0", cfg.local_port, reply);
                 send(client_fd, reply, reply_len, 0);
 
-                context *c = malloc(sizeof(*c));
+                context *c = context_list_get(list);
                 if (c == NULL) {
                     LOG_ERROR("Malloc Error");
                 }
@@ -208,8 +201,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     context *c = (context *)evdata;
     
     if (c->client_fd == 0 || c->sendlen == 0) {
-        LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
-        close_and_free_remote(c);
+        context_list_remove(list, c, MASK_REMOTE);
         return;
     }
 
@@ -218,10 +210,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("send() to remote %d failed: %s", fd, strerror(errno));
-                LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
-                close_and_free_remote(c);
-                LOG_DEBUG("close_and_free_client %p client %d", c, fd);
-                close_and_free_client(c);
+                context_list_remove(list, c, MASK_CLIENT|MASK_REMOTE);
                 return;
             }
             break; 
@@ -253,10 +242,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("recv() failed: %s", strerror(errno));
-                LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
-                close_and_free_remote(c);
-                LOG_DEBUG("close_and_free_client %p client %d", c, fd);
-                close_and_free_client(c);
+                context_list_remove(list, c, MASK_CLIENT|MASK_REMOTE);
                 return;
             }
             
@@ -265,8 +251,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
         if (rc == 0) {
             LOG_DEBUG("remote %d Connection closed", fd);
-            LOG_DEBUG("close_and_free_remote %p client %d", c, fd);
-            close_and_free_remote(c);
+            context_list_remove(list, c, MASK_REMOTE);
             break;
         }
 
@@ -287,6 +272,12 @@ int main (int argc, char *argv[])
 
     FAKIO_INIT_CRYPT(&fctx, cfg.key, MAX_KEY_LEN);
 
+    /* 初始化 Context */
+    list = context_list_create(100);
+    if (list == NULL) {
+        LOG_ERROR("Start Error!");
+    }
+    
     event_loop *loop;
     loop = create_event_loop(100);
     if (loop == NULL) {
@@ -307,6 +298,8 @@ int main (int argc, char *argv[])
     LOG_INFO("Fakio Local Start...... Binding in 0.0.0.0:%s", cfg.local_port);
     LOG_INFO("Fakio Local Event Loop Start, Use %s", get_event_api_name());
     start_event_loop(loop);
+
+    context_list_free(list);
     delete_event_loop(loop);
     
     return 0;

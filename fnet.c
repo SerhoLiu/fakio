@@ -1,6 +1,5 @@
 #include "fnet.h"
 #include "flog.h"
-#include "fevent.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -141,44 +140,6 @@ done:
 end:
     freeaddrinfo(rp);
     return listen_fd;
-}
-
-void close_and_free_client(context *c)
-{
-    if (c == NULL) {
-        return;
-    }
-
-    if (c->client_fd != 0) {
-        delete_event(c->loop, c->client_fd, EV_WRABLE);
-        delete_event(c->loop, c->client_fd, EV_RDABLE);
-        close(c->client_fd);
-        c->client_fd = 0;
-    }
-
-    if (c->client_fd || c->remote_fd) {
-        return;
-    }
-    free(c);     
-}
-
-void close_and_free_remote(context *c)
-{
-    if (c == NULL) {
-        return;
-    }
-
-    if (c->remote_fd != 0) {
-        delete_event(c->loop, c->remote_fd, EV_WRABLE);
-        delete_event(c->loop, c->remote_fd, EV_RDABLE);
-        close(c->remote_fd);
-        c->remote_fd = 0;    
-    }
-    
-    if (c->client_fd || c->remote_fd) {
-        return;
-    }
-    free(c);       
 }
 
 /* 使用 IPv4:port 格式生成服务器地址 */
