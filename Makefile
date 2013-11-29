@@ -7,7 +7,7 @@ ifeq ($(UNAME_S), Linux)
 	CFLAGS += -D USE_EPOLL
 endif
 
-OBJ = config.o fevent.o fnet.o fcrypt.o 
+OBJ = config.o fevent.o fnet.o fcrypt.o fcontext.o
 
 all: fakio-server fakio-local
 
