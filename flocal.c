@@ -137,8 +137,14 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
             break;
         }
 
-        if (buffer[0] == SOCKS_VER && buffer[1] == SOCKS_NMETHODS && buffer[2] == SOCKS_NO_AUTH) {
-            if (rc < 4) {
+        /* Socks5 认证协议，采用 050100，这里不管发起方使用何种协议 */
+        if (buffer[0] == SOCKS_VER) {
+            
+            /**
+             * 这里使用 rc 来区分是第一次请求，还是第二次请求 
+             * 7 是一个“魔数”，假设第一次请求内容不超过 7 个字节
+             */
+            if (rc < 7) {
                 reply[0] = SOCKS_VER;
                 reply[1] = SOCKS_NO_AUTH;
                 //TODO........
@@ -146,7 +152,8 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 memset(buffer, 0, BUFSIZE);
                 return;
             } else {
-                int remote_fd = fnet_create_and_connect(cfg.server, cfg.server_port, FNET_CONNECT_BLOCK);
+                int remote_fd = fnet_create_and_connect(cfg.server,
+                    cfg.server_port, FNET_CONNECT_BLOCK);
                 if (remote_fd < 0) {
                     LOG_WARN("remote don't onnection");
                     break;
