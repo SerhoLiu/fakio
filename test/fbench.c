@@ -1,25 +1,13 @@
 /*
- * (C) Radim Kolar 1997-2004
- * This is free software, see GNU Public License version 2 for
- * details.
- *
- * Simple forking WWW Server benchmark:
+ * Simple benchmark from webbench
  *
  * Usage:
  *   webbench --help
- *
- * Return codes:
- *    0 - sucess
- *    1 - benchmark failed (server is not on-line)
- *    2 - bad param
- *    3 - internal error, fork failed
  * 
  */ 
 #include <unistd.h>
-#include <sys/param.h>
 #include <rpc/types.h>
 #include <getopt.h>
-#include <strings.h>
 #include <time.h>
 #include <signal.h>
 #include <stdio.h>
@@ -30,21 +18,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <sys/time.h>
 
-#define METHOD_GET 0
-#define METHOD_HEAD 1
-#define METHOD_OPTIONS 2
-#define METHOD_TRACE 3
-#define PROGRAM_VERSION "1.5"
-
+#define REQUEST_SIZE 2048
 /* values */
 volatile int timerexpired=0;
 int speed = 0;
 int failed = 0;
 int bytes = 0;
 
-int http10 = 2;
 int clients = 1;
 int benchtime = 30;
 int proxyport = 80;
@@ -52,15 +33,14 @@ int proxyport = 80;
 /* internal */
 int mypipe[2];
 char host[MAXHOSTNAMELEN];
-#define REQUEST_SIZE 2048
 char request_t[REQUEST_SIZE];
 
 static const struct option long_options[]=
 {
     {"time",  required_argument,  NULL, 't'},
-    {"help",no_argument,NULL,'?'},
-    {"clients",required_argument,NULL,'c'},
-    {NULL,0,NULL,0}
+    {"help", no_argument, NULL, '?'},
+    {"clients", required_argument, NULL, 'c'},
+    {NULL, 0, NULL, 0}
 };
 
 static int b_socket(const char *host, int clientPort);
@@ -105,7 +85,7 @@ int main(int argc, char *argv[])
     }
  
     if (optind == argc) {
-        fprintf(stderr, "webbench: Missing URL!\n");
+        fprintf(stderr, "fbench: Missing URL!\n");
 		usage();
 		return 2;
     }
@@ -179,7 +159,6 @@ void build_request_t(const char *url)
     strcat(request_t,"Connection: close\r\n\r\n");
 }
 
-/* vraci system rc error kod */
 static int bench(void)
 {
     int i,j,k;    
