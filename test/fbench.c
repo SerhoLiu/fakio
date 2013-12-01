@@ -1,5 +1,5 @@
 /*
- * Simple benchmark from webbench
+ * Simple Fakio socks5 server benchmark from webbench
  *
  * Usage:
  *   webbench --help
@@ -19,6 +19,12 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+/* Socks5 define */
+#define SOCKS_VER 0x05
+#define SOCKS_CONNECT 0x01
+#define SOCKS_ATYPE_IPV4 0x01
+#define SOCKS_ATYPE_DNAME 0x03
+
 #define REQUEST_SIZE 2048
 /* values */
 volatile int timerexpired=0;
@@ -28,18 +34,25 @@ int bytes = 0;
 
 int clients = 1;
 int benchtime = 30;
-int proxyport = 80;
+
+int get_port = 80;
+int socks5_port = 8000;
 
 /* internal */
 int mypipe[2];
+
 char host[MAXHOSTNAMELEN];
+char socks5_server[MAXHOSTNAMELEN];
 char request_t[REQUEST_SIZE];
+char socks5_request[REQUEST_SIZE];
 
 static const struct option long_options[]=
 {
     {"time",  required_argument,  NULL, 't'},
     {"help", no_argument, NULL, '?'},
     {"clients", required_argument, NULL, 'c'},
+    {"server", required_argument, NULL, 's'},
+    {"port", required_argument, NULL, 'p'},
     {NULL, 0, NULL, 0}
 };
 
@@ -59,6 +72,8 @@ static void usage(void)
 	"fbench [option]... URL\n"
 	"  -t|--time <sec>          Run benchmark for <sec> seconds. Default 30.\n"
 	"  -c|--clients <n>         Run <n> HTTP clients at once. Default one.\n"
+    "  -s|--server <ip>         Run test socks5 server ip address.\n"
+    "  -p|--port <num>          Run test socks5 server port. Default 8000.\n"
 	"  -?|-h|--help             This information.\n"
 	);
 };
@@ -72,7 +87,7 @@ int main(int argc, char *argv[])
         return 2;
     } 
 
-    while ((opt = getopt_long(argc, argv, "t:c:?h",
+    while ((opt = getopt_long(argc, argv, "t:c:s:p:?h",
                   long_options, &options_index))!=EOF) {
         switch (opt) {
             case  0 : break;
@@ -81,6 +96,8 @@ int main(int argc, char *argv[])
             case 'h':
             case '?': usage(); return 2; break;
             case 'c': clients = atoi(optarg); break;
+            case 'p': socks5_port = atoi(optarg); break;
+            case 's': strcpy(socks5_server, optarg); break;
         }
     }
  
@@ -92,6 +109,14 @@ int main(int argc, char *argv[])
 
     if (clients == 0) clients = 1;
     if (benchtime == 0) benchtime = 60;
+    if (socks5_port == 0) socks5_port = 8000;
+
+    int temp;
+    if (inet_pton(AF_INET, socks5_server, &temp) != 1) {
+        fprintf(stderr, "fbench: Missing socks5 server!\n");
+        usage();
+        return 2;
+    }
 
     /* Copyright */
     fprintf(stderr, "Fbench - By WebBenchmark\n\n");
@@ -143,8 +168,8 @@ void build_request_t(const char *url)
        strncpy(host, url+i, strchr(url+i,':')-url-i);
        bzero(tmp,10);
        strncpy(tmp,index(url+i,':')+1,strchr(url+i,'/')-index(url+i,':')-1);
-       proxyport=atoi(tmp);
-       if (proxyport==0) proxyport = 80;
+       get_port = atoi(tmp);
+       if (get_port == 0) get_port = 80;
     } else {
         strncpy(host,url+i,strcspn(url+i,"/"));
     }
@@ -159,6 +184,29 @@ void build_request_t(const char *url)
     strcat(request_t,"Connection: close\r\n\r\n");
 }
 
+static int build_socks5_request()
+{
+    bzero(socks5_request, REQUEST_SIZE);
+    socks5_request[0] = SOCKS_VER;
+    socks5_request[1] = SOCKS_CONNECT;
+    socks5_request[2] = 0x00;
+    socks5_request[3] = SOCKS_ATYPE_DNAME;
+
+    uint8_t domain_len = strlen(host);
+    socks5_request[4] = domain_len;
+    
+    int i;
+    for (i = 0; i < domain_len; i++) {
+            socks5_request[5+i] = host[i];
+    }
+
+    uint16_t ports = htons(get_port);
+    snprintf(socks5_request+5+domain_len, 2, "%d", ports);
+
+    return (7 + domain_len);
+}
+
+
 static int bench(void)
 {
     int i,j,k;    
@@ -166,7 +214,7 @@ static int bench(void)
     FILE *f;
 
     /* check avaibility of target server */
-    i = b_socket(host, proxyport);
+    i = b_socket(host, get_port);
     if (i < 0) { 
         fprintf(stderr, "\nConnect to server failed. Aborting benchmark.\n");
         return 1;
@@ -196,7 +244,7 @@ static int bench(void)
 
     if (pid == 0) {
         /* I am a child */
-        benchcore(host, proxyport, request_t);
+        benchcore(host, get_port, request_t);
 
         /* write results to pipe */
         f = fdopen(mypipe[1], "w");
@@ -243,7 +291,7 @@ static int bench(void)
 
 void benchcore(const char *host,const int port,const char *req)
 {
-    int rlen;
+    int get_rlen, socks_rlen;
     char buf[1500];
     int s, i;
     struct sigaction sa;
@@ -256,7 +304,8 @@ void benchcore(const char *host,const int port,const char *req)
     }
     alarm(benchtime);
 
-    rlen = strlen(req);
+    get_rlen = strlen(req);
+    socks_rlen = build_socks5_request();
     
     nexttry: while(1) {
         if (timerexpired) {
@@ -271,8 +320,13 @@ void benchcore(const char *host,const int port,const char *req)
         if (s < 0) {
             failed++;
             continue;
+        }
+        if (socks_rlen != write(s, socks5_request, socks_rlen)) {
+            failed++;
+            close(s);
+            continue;
         } 
-        if (rlen != write(s,req,rlen)) {
+        if (get_rlen != write(s, req, get_rlen)) {
             failed++;
             close(s);
             continue;
