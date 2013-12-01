@@ -192,7 +192,7 @@ static int build_socks5_request()
     socks5_request[2] = 0x00;
     socks5_request[3] = SOCKS_ATYPE_DNAME;
 
-    uint8_t domain_len = strlen(host);
+    uint8_t domain_len = strlen(socks5_server);
     socks5_request[4] = domain_len;
     
     int i;
@@ -201,8 +201,7 @@ static int build_socks5_request()
     }
 
     uint16_t ports = htons(get_port);
-    snprintf(socks5_request+5+domain_len, 2, "%d", ports);
-
+    *(uint16_t *)(socks5_request+5+domain_len) = ports;
     return (7 + domain_len);
 }
 
@@ -214,7 +213,7 @@ static int bench(void)
     FILE *f;
 
     /* check avaibility of target server */
-    i = b_socket(host, get_port);
+    i = b_socket(socks5_server, socks5_port);
     if (i < 0) { 
         fprintf(stderr, "\nConnect to server failed. Aborting benchmark.\n");
         return 1;
@@ -310,13 +309,12 @@ void benchcore(const char *host,const int port,const char *req)
     nexttry: while(1) {
         if (timerexpired) {
             if (failed>0) {
-                /* fprintf(stderr,"Correcting failed by signal\n"); */
                 failed--;
             }
             return;
         }
     
-        s = b_socket(host, port);                          
+        s = b_socket(socks5_server, socks5_port);                          
         if (s < 0) {
             failed++;
             continue;
@@ -333,8 +331,8 @@ void benchcore(const char *host,const int port,const char *req)
         }
         while(1) {
             if (timerexpired) break; 
-            i = read(s,buf,1500);
-            /* fprintf(stderr,"%d\n",i); */
+            i = read(s, buf, 1500);
+            //fprintf(stderr,"%d\n",i);
             if (i < 0) { 
                 failed++;
                 close(s);
