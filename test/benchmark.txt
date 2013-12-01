@@ -1,0 +1,32 @@
+注：在进行压力测试时，关闭了加密功能，所以测试结果和实际结果有所偏差
+
+测试环境：
+    1. Ubuntu 12.04 x86_64
+    2. CPU: Intel(R) Core(TM)2 Duo CPU P7450  @ 2.13GHz
+    3. 内存: 4016236 kB
+
+测试网站：本地使用 php -S localhost:8000
+
+测试说明：
+    1. ./fbench -t <time:秒> -c <clients>
+    2. fakio-server 中对 context_list, event_loop 大小的设置
+       会对结果产生影响，如果并发数大的话，需要调大 event_loop size
+
+测试用例以及相应结果:
+    
+    1. GET http://localhost:8000/ 首页大小为 26.0Kb
+
+       i. -t 30 -c 200:
+            Speed=62130 pages/min, 27042580 bytes/sec.
+            Requests: 31065 susceed, 0 failed.
+      ii. -t 30 -c 1000:
+            Speed=58942 pages/min, 24967238 bytes/sec.
+            Requests: 28849 susceed, 622 failed.
+
+    2. GET http://localhost:8000/1.tar.gz 大小为 26.6Mb
+       i. -t 30 -c 200:
+            Speed=34006 pages/min, 43638320 bytes/sec.
+            Requests: 17003 susceed, 0 failed.
+      ii. -t 30 -c 100:
+            因为文件大，所以测试是需要调整很多系统参数，而且 Web 服务器已经不堪重负，
+            换一个服务器再测
