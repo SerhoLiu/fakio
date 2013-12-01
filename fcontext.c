@@ -142,6 +142,5 @@ void context_list_remove(context_list *list, context *c, int mask)
     if (node->mask == MASK_NONE) {
         list->used_size--;
     }
-    LOG_DEBUG("now context %p mask %d", c, node->mask);
 }
 
