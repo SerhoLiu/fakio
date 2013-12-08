@@ -13,26 +13,15 @@ typedef struct {
 } fbuffer;
 
 
-static  inline fbuffer *fbuffer_create()
-{
-    fbuffer *buffer;
-    buffer = (fbuffer *)malloc(sizeof(*buffer));
-    if (buffer == NULL) return NULL;
-
-    buffer->length  = 0;
-    buffer->start = 0;
-
-    return buffer;
-}
-
-
-static inline void fbuffer_destroy(fbuffer *buffer)
-{
-    if (buffer != NULL) free(buffer); 
-}
-
+#define FBUFFER_CREATE(B) do {     \
+    (B) = (fbuffer *)malloc(sizeof(fbuffer)); \
+    if ((B) != NULL) {                        \
+        (B)->length = (B)->start = 0;         \
+    }                                          \
+} while (0)
 
 #define FBUFFER_READ_AT(B) ((B)->buffer + start)
+
 #define FBUFFER_READ_LEN(B) ((B)->length)
 
 #define FUBFFER_COMMIT_READ(B, A) do { \
