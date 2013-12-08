@@ -2,52 +2,48 @@
 #define _FAKIO_BUFFER_H_
 
 #include <string.h>
+#include <stdlib.h>
 
-#define BUFSIZE 1536
+#define BUFSIZE 4072
 
 typedef struct {
     unsigned char buffer[BUFSIZE];
     int length;
     int start;
-    int end;
 } fbuffer;
 
-fbuffer *fbuffer_create(int length);
 
-void fbuffer_destroy(fbuffer *buffer);
+static  inline fbuffer *fbuffer_create()
+{
+    fbuffer *buffer;
+    buffer = (fbuffer *)malloc(sizeof(*buffer));
+    if (buffer == NULL) return NULL;
 
-int fbuffer_read(fbuffer *buffer, unsigned char *target, int amount);
+    buffer->length  = 0;
+    buffer->start = 0;
 
-int fbuffer_write(fbuffer *buffer, unsigned char *data, int length);
+    return buffer;
+}
 
-int fbuffer_empty(fbuffer *buffer);
 
-int fbuffer_full(fbuffer *buffer);
+static inline void fbuffer_destroy(fbuffer *buffer)
+{
+    if (buffer != NULL) free(buffer); 
+}
 
-int fbuffer_available_data(fbuffer *buffer);
 
-int fbuffer_available_space(fbuffer *buffer);
+#define FBUFFER_READ_AT(B) ((B)->buffer + start)
+#define FBUFFER_READ_LEN(B) ((B)->length)
 
-char *fbuffer_gets(fbuffer *buffer, int amount);
+#define FUBFFER_COMMIT_READ(B, A) do { \
+    (B)->length -= (A);                \
+    if ((B)->length == 0) {            \
+        (B)->start = 0;                \
+    } else {                           \
+        (B)->start += (A);             \
+    }                                  \
+} while (0);
 
-#define fbuffer_available_data(B) (((B)->end + 1) % (B)->length - (B)->start - 1)
-
-#define fbuffer_available_space(B) ((B)->length - (B)->end - 1)
-
-#define fbuffer_full(B) (fbuffer_available_data((B)) - (B)->length == 0)
-
-#define fbuffer_empty(B) (fbuffer_available_data((B)) == 0)
-
-#define fbuffer_puts(B, D) fbuffer_write((B), bdata((D)), blength((D)))
-
-#define fbuffer_get_all(B) fbuffer_gets((B), fbuffer_available_data((B)))
-
-#define fbuffer_starts_at(B) ((B)->buffer + (B)->start)
-
-#define fbuffer_ends_at(B) ((B)->buffer + (B)->end)
-
-#define fbuffer_commit_read(B, A) ((B)->start = ((B)->start + (A)) % (B)->length)
-
-#define fbuffer_commit_write(B, A) ((B)->end = ((B)->end + (A)) % (B)->length)
+#define FUBFFER_COMMIT_WRITE(B, A) ((B)->length += (A))
 
 #endif
