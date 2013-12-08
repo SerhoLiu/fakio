@@ -71,13 +71,13 @@ static context *context_create()
     context *c = (context *)malloc(sizeof(*c));
     if (c == NULL) return NULL;
     
-    FBUFFER_CREATE(c->request);
+    FBUF_CREATE(c->request);
     if (c->request == NULL) {
         free(c);
         return NULL;
     }
 
-    FBUFFER_CREATE(c->response);
+    FBUF_CREATE(c->response);
     if (c->response == NULL) {
         free(c->request);
         free(c);

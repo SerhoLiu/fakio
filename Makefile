@@ -7,15 +7,15 @@ ifeq ($(UNAME_S), Linux)
 	CFLAGS += -D USE_EPOLL
 endif
 
-OBJ = config.o fevent.o fnet.o fcrypt.o fcontext.o
+OBJ = src/config.o src/fevent.o src/fnet.o src/fcrypt.o src/fcontext.o
 
 all: fakio-server fakio-local
 
 fakio-server: $(OBJ)
-	$(CC) $(CFLAGS) -o $@  fserver.c $(OBJ)
+	$(CC) $(CFLAGS) -o $@  src/fserver.c $(OBJ)
 
 fakio-local: $(OBJ)
-	$(CC) $(CFLAGS) -o $@ flocal.c $(OBJ)
+	$(CC) $(CFLAGS) -o $@ src/flocal.c $(OBJ)
 
 
 .PHONY: clean

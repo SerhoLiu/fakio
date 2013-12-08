@@ -13,18 +13,22 @@ typedef struct {
 } fbuffer;
 
 
-#define FBUFFER_CREATE(B) do {     \
+#define FBUF_CREATE(B) do {     \
     (B) = (fbuffer *)malloc(sizeof(fbuffer)); \
     if ((B) != NULL) {                        \
         (B)->length = (B)->start = 0;         \
     }                                          \
 } while (0)
 
-#define FBUFFER_READ_AT(B) ((B)->buffer + start)
+#define FBUF_WRITE_AT(B) ((B)->buffer)
 
-#define FBUFFER_READ_LEN(B) ((B)->length)
+#define FBUF_COMMIT_WRITE(B, A) ((B)->length += (A))
 
-#define FUBFFER_COMMIT_READ(B, A) do { \
+#define FBUF_DATA_AT(B) ((B)->buffer + (B)->start)
+
+#define FBUF_DATA_LEN(B) ((B)->length)
+
+#define FBUF_COMMIT_READ(B, A) do { \
     (B)->length -= (A);                \
     if ((B)->length == 0) {            \
         (B)->start = 0;                \
@@ -33,6 +37,6 @@ typedef struct {
     }                                  \
 } while (0);
 
-#define FUBFFER_COMMIT_WRITE(B, A) ((B)->length += (A))
+
 
 #endif
