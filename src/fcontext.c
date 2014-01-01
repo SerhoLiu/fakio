@@ -1,6 +1,7 @@
 #include "fcontext.h"
 #include "fevent.h"
 #include "flog.h"
+//#include "fbuffer.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -9,94 +10,107 @@
 
 struct context_node {
     int mask;
-    struct context_node *next;
     context *c;
+
+    struct context_node *next, *prev;
 };
+
+typedef struct context_node context_node_t;
 
 struct context_list {
     int max_size;
     int current_size;
     int used_size;
-    context_node *head, *tail;
+
+    context_node_t head;
 };
 
-context_list *context_list_create(int maxsize)
+
+context_list_t *context_list_create(int maxsize)
 {
     if (maxsize < MIN_MAXSIZE) {
         maxsize = MIN_MAXSIZE;
     }
-    context_list *list = (context_list *)malloc(sizeof(*list));
+    context_list_t *list = (context_list_t *)malloc(sizeof(*list));
     if (list == NULL) return NULL;
 
     list->max_size = maxsize;
-    list->current_size = 0;
-    list->used_size = 0;
-    list->head = list->tail = NULL;
+    list->used_size = list->current_size = 0;
+    
+    //list->head = NULL;
+    list->head.next = list->head.prev = &(list->head);
 
     return list;
 }
 
-void context_list_free(context_list *list)
+void context_list_free(context_list_t *list)
 {
     if (list == NULL) return;
-    context_node *n, *p;
-    p = list->head;
-    while (p != NULL) {
-        n = p->next;
-        free(p);
-        p = n;
+    context_node_t *n;
+    for (n = list->head.next; n != &(list->head); n = n->next) {
+        free(n);
     }
+
     free(list);
 }
 
-/* 在 context list 尾部添加一个节点 */
-static context_node *context_list_add(context_list *list)
+static context *context_create()
 {
-    context_node *node;
-    node = (context_node *)malloc(sizeof(*node));
+    context *c = (context *)malloc(sizeof(*c));
+    if (c == NULL) return NULL;
+
+    return c;
+}
+
+/* 在 context list 头部添加一个节点 */
+static context_node_t *context_list_add_node(context_list_t *list)
+{
+    context_node_t *node;
+    node = (context_node_t *)malloc(sizeof(*node));
     if (node == NULL) return NULL;
 
-    node->c = (context *)malloc(sizeof(context));
+    node->c = context_create();
     if (node->c == NULL) {
         free(node);
         return NULL;
     }
     node->c->node = node;
 
-    node->next = NULL;
-    if (list->head == NULL) {
-        list->head = node;
-    }
-    if (list->tail != NULL) {
-        list->tail->next = node;
-    }
+    // 将 node 插入 used list 头部
+    node->next = list->head.next;
+    node->prev = &(list->head);
+    list->head.next->prev = node;
+    list->head.next = node;
 
-    list->tail = node;
     list->current_size++;
     return node;
 }
 
-context *context_list_get(context_list *list)
+context *context_list_get_empty(context_list_t *list)
 {
     if (list == NULL) return NULL;
 
     LOG_DEBUG("Context size=%d current=%d used=%d",
         list->max_size, list->current_size, list->used_size);
 
-    context_node *node;
+    context_node_t *node;
+    
     if (list->used_size < list->current_size) {
-        for (node = list->head; node != NULL; node = node->next) {
-            if (!node->mask) {
+        //node = list->head;
+        //int i;
+        for (node = list->head.next; node != &(list->head); node = node->next) {
+            if (node->mask == MASK_NONE) {
                 node->mask = (MASK_CLIENT | MASK_REMOTE);
                 list->used_size++;
                 return node->c;
             }
+            //node = node->next;
         }
     }
 
     if (list->used_size == list->current_size) {
         if (list->current_size < list->max_size) {
-            context_node *node = context_list_add(list);
+            node = context_list_add_node(list);
             if (node == NULL) return NULL;
             node->mask = (MASK_CLIENT | MASK_REMOTE);
             list->used_size++;
@@ -106,6 +120,7 @@ context *context_list_get(context_list *list)
 
     return NULL;
 }
+
 
 static void delete_and_close_fd(context *c, int fd)
 {   
@@ -117,13 +132,12 @@ static void delete_and_close_fd(context *c, int fd)
     }
 }
 
-/* 考虑将已经完全清空的节点放到头节点，可加快分配速度 */
-void context_list_remove(context_list *list, context *c, int mask)
+
+void context_list_remove(context_list_t *list, context *c, int mask)
 {
     if (list == NULL || c == NULL || mask == MASK_NONE) return;
-    context_node *node = c->node;
+    context_node_t *node = c->node;
 
-    if (node->mask == MASK_NONE) return;
     int rmask = node->mask & mask;
     
     if (rmask == MASK_CLIENT) {
@@ -140,7 +154,13 @@ void context_list_remove(context_list *list, context *c, int mask)
 
     node->mask &= (~mask);
     if (node->mask == MASK_NONE) {
+        node->next->prev = node->prev;
+        node->prev->next = node->next;
+        
+        node->next = list->head.next;
+        node->prev = &(list->head);
+        list->head.next->prev = node;
+        list->head.next = node;
         list->used_size--;
     }
 }
-

@@ -1,3 +1,4 @@
 *.o
 fakio-server
 fakio-local
+test/fbench

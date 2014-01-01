@@ -12,7 +12,7 @@
 #include <unistd.h>
 
 static fcrypt_ctx fctx;
-static context_list *list;
+static context_list_t *list;
 
 static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 static void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata);
@@ -38,26 +38,26 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                 context_list_remove(list, c, MASK_CLIENT|MASK_REMOTE);
                 return;
             }
-            break; 
+            break;
         }
         if (rc >= 0) {
             /* 当发送 rc 字节的数据后，如果系统发送缓冲区满，则会产生 EAGAIN 错误，
-             * 此时若 rc < c->recvlen，则再次发送时，会丢失 recv buffer 中的
-             * c->recvlen - rc 中的数据，因此应该将其移到 recv buffer 前面
-             */ 
+* 此时若 rc < c->recvlen，则再次发送时，会丢失 recv buffer 中的
+* c->recvlen - rc 中的数据，因此应该将其移到 recv buffer 前面
+*/
             c->recvlen -= rc;
             /* OK，数据一次性发送完毕，不需要特殊处理 */
             if (c->recvlen <= 0) {
                 c->rnow = 0;
                 delete_event(loop, fd, EV_WRABLE);
-                create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c); 
+                create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);
                 create_event(loop, c->remote_fd, EV_RDABLE, &remote_readable_cb, c);
                 return;
             } else {
                 c->rnow += rc;
             }
         }
-    }  
+    }
 }
 
 
@@ -78,7 +78,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                 return;
             }
             delete_event(loop, fd, EV_RDABLE);
-            break; 
+            break;
         }
         if (rc == 0) {
             LOG_DEBUG("client %d connection closed", fd);
@@ -88,13 +88,13 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         
         c->sendlen += rc;
         /* 通常情况下 rc 和 BUFSIZE 差不多，不过有时候 rc 比较小，如果 EAGAIN 没有
-         * 发生，那么连续接收有可能造成 csend buffer 溢出，所以这里就有一个问题：怎样
-         * 尽可能的多接收数据后再进行发送
-         * 目前是不管多少，收到即发
-         */
+* 发生，那么连续接收有可能造成 csend buffer 溢出，所以这里就有一个问题：怎样
+* 尽可能的多接收数据后再进行发送
+* 目前是不管多少，收到即发
+*/
         FAKIO_ENCRYPT(&fctx, c->csend, c->sendlen);
         delete_event(loop, fd, EV_RDABLE);
-        break;    
+        break;
     }
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
 }
@@ -164,9 +164,10 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
             if (set_socket_option(client_fd) < 0) {
                 LOG_WARN("set socket option error");
             }
-            context *c = context_list_get(list);
+            context *c = context_list_get_empty(list);
             if (c == NULL) {
                 LOG_WARN("get context errno");
+                close(client_fd);
                 break;
             }
 
@@ -185,11 +186,11 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 c->recvlen = rc - r.rlen;
                 create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
             } else {
-                create_event(loop, remote_fd, EV_RDABLE, &remote_readable_cb, c);    
+                create_event(loop, remote_fd, EV_RDABLE, &remote_readable_cb, c);
             }
             memset(buffer, 0, BUFSIZE);
-            return;       
-        }       
+            return;
+        }
     }
 
     delete_event(loop, remote_fd, EV_WRABLE);
@@ -216,7 +217,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                 context_list_remove(list, c, MASK_CLIENT|MASK_REMOTE);
                 return;
             }
-            break; 
+            break;
         }
         if (rc >= 0) {
             c->sendlen -= rc;
@@ -230,14 +231,14 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                     context_list_remove(list, c, MASK_REMOTE);
                 } else {
                     create_event(loop, fd, EV_RDABLE, &remote_readable_cb, c);
-                    create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);      
+                    create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);
                 }
-                break;  
+                break;
             } else {
                 c->snow += rc;
             }
-        }  
-    }  
+        }
+    }
 }
 
 void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
@@ -245,7 +246,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     context *c = (context *)evdata;
     if (c->recvlen > 0) {
         delete_event(loop, fd, EV_RDABLE);
-        return;    
+        return;
     }
 
     while (1) {
@@ -258,7 +259,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             }
             
             delete_event(loop, fd, EV_RDABLE);
-            break; 
+            break;
         }
         if (rc == 0) {
             LOG_DEBUG("remote %d Connection closed", fd);
@@ -269,7 +270,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         c->recvlen += rc;
         FAKIO_DECRYPT(&fctx, c->crecv, c->recvlen);
         delete_event(loop, fd, EV_RDABLE);
-        break;     
+        break;
     }
     create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
 }
@@ -286,13 +287,13 @@ int main (int argc, char *argv[])
     FAKIO_INIT_CRYPT(&fctx, cfg.key, MAX_KEY_LEN);
     
     /* 初始化 Context */
-    list = context_list_create(100);
+    list = context_list_create(1000);
     if (list == NULL) {
         LOG_ERROR("Start Error!");
     }
 
     event_loop *loop;
-    loop = create_event_loop(100);
+    loop = create_event_loop(1000);
     if (loop == NULL) {
         LOG_ERROR("Create Event Loop Error!");
     }
