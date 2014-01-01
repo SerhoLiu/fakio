@@ -4,7 +4,6 @@
 #include "fnet.h"
 #include "fcrypt.h"
 #include "fcontext.h"
-#include "fbuffer.h"
 #include <sys/socket.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -23,53 +22,55 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
 /* client 可写 */
 void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    LOG_DEBUG("client %d writeable", fd);
+
     context *c = (context *)evdata;
     
-    if (c->remote_fd == 0 || FBUF_DATA_LEN(c->response) == 0) {
+    if (c->remote_fd == 0 || c->recvlen == 0) {
         context_list_remove(list, c, MASK_CLIENT);
         return;
     }
 
     while (1) {
-        int rc = send(fd, FBUF_DATA_AT(c->response), FBUF_DATA_LEN(c->response), 0);
+        int rc = send(fd, c->crecv + c->rnow, c->recvlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("send() to client %d failed: %s", fd, strerror(errno));
                 context_list_remove(list, c, MASK_CLIENT|MASK_REMOTE);
                 return;
             }
-            break; 
+            break;
         }
         if (rc >= 0) {
             /* 当发送 rc 字节的数据后，如果系统发送缓冲区满，则会产生 EAGAIN 错误，
-             * 此时若 rc < c->recvlen，则再次发送时，会丢失 recv buffer 中的
-             * c->recvlen - rc 中的数据，因此应该将其移到 recv buffer 前面
-             */ 
-            FBUF_COMMIT_READ(c->response, rc);
+* 此时若 rc < c->recvlen，则再次发送时，会丢失 recv buffer 中的
+* c->recvlen - rc 中的数据，因此应该将其移到 recv buffer 前面
+*/
+            c->recvlen -= rc;
             /* OK，数据一次性发送完毕，不需要特殊处理 */
-            if (FBUF_DATA_LEN(c->response) <= 0) {
+            if (c->recvlen <= 0) {
+                c->rnow = 0;
                 delete_event(loop, fd, EV_WRABLE);
-                create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c); 
+                create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);
                 create_event(loop, c->remote_fd, EV_RDABLE, &remote_readable_cb, c);
                 return;
+            } else {
+                c->rnow += rc;
             }
         }
-    }  
+    }
 }
 
 
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
-{   
-    LOG_DEBUG("client %d readable", fd);
+{
     context *c = (context *)evdata;
-    if (FBUF_DATA_LEN(c->request) > 0) {
+    if (c->sendlen > 0) {
         delete_event(loop, fd, EV_RDABLE);
         return;
     }
 
     while (1) {
-        int rc = recv(fd, FBUF_WRITE_AT(c->request), BUFSIZE, 0);
+        int rc = recv(fd, c->csend, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
@@ -77,7 +78,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                 return;
             }
             delete_event(loop, fd, EV_RDABLE);
-            break; 
+            break;
         }
         if (rc == 0) {
             LOG_DEBUG("client %d connection closed", fd);
@@ -85,15 +86,15 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             break;
         }
         
-        FBUF_COMMIT_WRITE(c->request, rc);
+        c->sendlen += rc;
         /* 通常情况下 rc 和 BUFSIZE 差不多，不过有时候 rc 比较小，如果 EAGAIN 没有
-         * 发生，那么连续接收有可能造成 csend buffer 溢出，所以这里就有一个问题：怎样
-         * 尽可能的多接收数据后再进行发送
-         * 目前是不管多少，收到即发
-         */
-        FAKIO_ENCRYPT(&fctx, FBUF_DATA_AT(c->request), FBUF_DATA_LEN(c->request));
+* 发生，那么连续接收有可能造成 csend buffer 溢出，所以这里就有一个问题：怎样
+* 尽可能的多接收数据后再进行发送
+* 目前是不管多少，收到即发
+*/
+        FAKIO_ENCRYPT(&fctx, c->csend, c->sendlen);
         delete_event(loop, fd, EV_RDABLE);
-        break;    
+        break;
     }
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
 }
@@ -166,27 +167,30 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
             context *c = context_list_get_empty(list);
             if (c == NULL) {
                 LOG_WARN("get context errno");
+                close(client_fd);
                 break;
             }
 
             LOG_DEBUG("client %d remote %d at %p", client_fd, remote_fd, c);
             c->client_fd = client_fd;
             c->remote_fd = remote_fd;
+            c->sendlen = c->recvlen = 0;
+            c->snow = c->rnow = 0;
             c->loop = loop;
 
             delete_event(loop, remote_fd, EV_RDABLE);
             
             /* buffer 中可能含有其它需要发送到 client 的数据 */
             if (rc > r.rlen) {
-                memcpy(FBUF_WRITE_AT(c->request), buffer+r.rlen, rc-r.rlen);
-                FBUF_COMMIT_WRITE(c->request, rc-r.rlen);
+                memcpy(c->crecv, buffer+r.rlen, rc-r.rlen);
+                c->recvlen = rc - r.rlen;
                 create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
             } else {
-                create_event(loop, remote_fd, EV_RDABLE, &remote_readable_cb, c);    
+                create_event(loop, remote_fd, EV_RDABLE, &remote_readable_cb, c);
             }
             memset(buffer, 0, BUFSIZE);
-            return;       
-        }       
+            return;
+        }
     }
 
     delete_event(loop, remote_fd, EV_WRABLE);
@@ -198,28 +202,28 @@ void server_remote_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
 
 void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    LOG_DEBUG("remote %d writeable", fd);
     context *c = (context *)evdata;
     
-    if (FBUF_DATA_LEN(c->request) == 0) {
+    if (c->sendlen == 0) {
         context_list_remove(list, c, MASK_REMOTE);
         return;
     }
 
     while (1) {
-        int rc = send(fd, FBUF_DATA_AT(c->request), FBUF_DATA_LEN(c->request), 0);
+        int rc = send(fd, c->csend + c->snow, c->sendlen, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("send() failed to remote %d: %s", fd, strerror(errno));
                 context_list_remove(list, c, MASK_CLIENT|MASK_REMOTE);
                 return;
             }
-            break; 
+            break;
         }
         if (rc >= 0) {
-            FBUF_COMMIT_READ(c->request, rc);
-            if (FBUF_DATA_LEN(c->request) <= 0) {
+            c->sendlen -= rc;
+            if (c->sendlen <= 0) {
 
+                c->snow = 0;
                 delete_event(loop, fd, EV_WRABLE);
                 
                 /* 如果 client 端已经关闭，则此次请求结束 */
@@ -227,25 +231,26 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
                     context_list_remove(list, c, MASK_REMOTE);
                 } else {
                     create_event(loop, fd, EV_RDABLE, &remote_readable_cb, c);
-                    create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);      
+                    create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);
                 }
-                break;  
+                break;
+            } else {
+                c->snow += rc;
             }
-        }  
-    }  
+        }
+    }
 }
 
 void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
-{   
-    LOG_DEBUG("remote %d readable", fd);
+{
     context *c = (context *)evdata;
-    if (FBUF_DATA_LEN(c->response) > 0) {
+    if (c->recvlen > 0) {
         delete_event(loop, fd, EV_RDABLE);
-        return;    
+        return;
     }
 
     while (1) {
-        int rc = recv(fd, FBUF_WRITE_AT(c->response), BUFSIZE, 0);
+        int rc = recv(fd, c->crecv, BUFSIZE, 0);
         if (rc < 0) {
             if (errno != EAGAIN) {
                 LOG_DEBUG("recv() failed form remote %d: %s", fd, strerror(errno));
@@ -254,7 +259,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             }
             
             delete_event(loop, fd, EV_RDABLE);
-            break; 
+            break;
         }
         if (rc == 0) {
             LOG_DEBUG("remote %d Connection closed", fd);
@@ -262,10 +267,10 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             break;
         }
 
-        FBUF_COMMIT_WRITE(c->response, rc);
-        FAKIO_DECRYPT(&fctx, FBUF_DATA_AT(c->response), FBUF_DATA_LEN(c->response));
+        c->recvlen += rc;
+        FAKIO_DECRYPT(&fctx, c->crecv, c->recvlen);
         delete_event(loop, fd, EV_RDABLE);
-        break;     
+        break;
     }
     create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
 }
@@ -282,13 +287,13 @@ int main (int argc, char *argv[])
     FAKIO_INIT_CRYPT(&fctx, cfg.key, MAX_KEY_LEN);
     
     /* 初始化 Context */
-    list = context_list_create(100);
+    list = context_list_create(1000);
     if (list == NULL) {
         LOG_ERROR("Start Error!");
     }
 
     event_loop *loop;
-    loop = create_event_loop(100);
+    loop = create_event_loop(1000);
     if (loop == NULL) {
         LOG_ERROR("Create Event Loop Error!");
     }
