@@ -1,4 +1,4 @@
-#include "../fcrypt.h"
+#include "../src/fcrypt.h"
 #include <string.h>
 #include <stdio.h>
 
