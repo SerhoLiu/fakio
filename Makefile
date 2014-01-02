@@ -20,4 +20,4 @@ fakio-local: $(OBJ)
 
 .PHONY: clean
 clean:
-	-rm fakio-server fakio-local *.o
+	-rm fakio-server fakio-local src/*.o
