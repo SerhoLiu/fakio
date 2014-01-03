@@ -37,7 +37,6 @@ context_list_t *context_list_create(int maxsize)
     list->used_size = list->current_size = 0;
     
     list->head = NULL;
-    //list->head.next = list->head.prev = &(list->head);
 
     return list;
 }
@@ -62,6 +61,19 @@ static context *context_create()
 {
     context *c = (context *)malloc(sizeof(*c));
     if (c == NULL) return NULL;
+
+    c->req = c->res = NULL;
+    FBUF_CREATE(c->req);
+    if (c->req == NULL) {
+        free(c);
+        return NULL;
+    }
+    FBUF_CREATE(c->res);
+    if (c->res == NULL) {
+        free(c->req);
+        free(c);
+        return NULL;
+    }
 
     return c;
 }
