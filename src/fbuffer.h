@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define BUFSIZE 1536
+#define BUFSIZE 4088
 
 typedef struct {
     unsigned char buffer[BUFSIZE];

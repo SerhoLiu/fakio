@@ -1,8 +1,8 @@
 #ifndef _FAKIO_CONTEXT_H_
 #define _FAKIO_CONTEXT_H_
 
-//#include "fbuffer.h"
-#define BUFSIZE 4096
+#include "fbuffer.h"
+
 #define MASK_NONE 0
 #define MASK_CLIENT 1
 #define MASK_REMOTE 2
@@ -12,16 +12,12 @@ typedef struct {
     int client_fd;
     int remote_fd;
     
-    unsigned char csend[BUFSIZE];
-    int sendlen;
-    int snow;
-    
-    unsigned char crecv[BUFSIZE];
-    int recvlen;
-    int rnow;
+    fbuffer *req; /* Request buffer */
+    fbuffer *res; /* Response Buffer */
 
     struct event_loop *loop;
     struct context_node *node;
+    struct context_list *list;
 } context;
 
 typedef struct context_list context_list_t;

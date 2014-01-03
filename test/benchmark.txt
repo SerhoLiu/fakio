@@ -17,11 +17,11 @@
     1. GET http://localhost:8000/ 首页大小为 26.0Kb
 
        i. -t 30 -c 200:
-            Speed=62130 pages/min, 27042580 bytes/sec.
-            Requests: 31065 susceed, 0 failed.
+            Speed=76476 pages/min, 33289404 bytes/sec.
+            Requests: 38238 susceed, 0 failed.
       ii. -t 30 -c 1000:
-            Speed=58942 pages/min, 24967238 bytes/sec.
-            Requests: 28849 susceed, 622 failed.
+            Speed=72876 pages/min, 31239700 bytes/sec.
+            Requests: 35979 susceed, 459 failed.
 
     2. GET http://localhost:8000/1.tar.gz 大小为 26.6Mb
        i. -t 30 -c 200:
