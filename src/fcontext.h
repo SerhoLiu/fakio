@@ -17,6 +17,7 @@ typedef struct {
 
     struct event_loop *loop;
     struct context_node *node;
+    struct context_list *list;
 } context;
 
 typedef struct context_list context_list_t;
