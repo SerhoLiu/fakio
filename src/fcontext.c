@@ -11,7 +11,6 @@
 struct context_node {
     int mask;
     context *c;
-
     struct context_node *next, *prev;
 };
 
@@ -22,7 +21,7 @@ struct context_list {
     int current_size;
     int used_size;
 
-    context_node_t head;
+    context_node_t *head;
 };
 
 
@@ -37,8 +36,8 @@ context_list_t *context_list_create(int maxsize)
     list->max_size = maxsize;
     list->used_size = list->current_size = 0;
     
-    //list->head = NULL;
-    list->head.next = list->head.prev = &(list->head);
+    list->head = NULL;
+    //list->head.next = list->head.prev = &(list->head);
 
     return list;
 }
@@ -46,9 +45,14 @@ context_list_t *context_list_create(int maxsize)
 void context_list_free(context_list_t *list)
 {
     if (list == NULL) return;
-    context_node_t *n;
-    for (n = list->head.next; n != &(list->head); n = n->next) {
-        free(n);
+    context_node_t *current, *next;
+    
+    int len = list->current_size;
+    current = list->head;
+    while (len--) {
+        next = current->next;
+        free(current);
+        current = next;
     }
 
     free(list);
@@ -77,10 +81,15 @@ static context_node_t *context_list_add_node(context_list_t *list)
     node->c->node = node;
 
     // 将 node 插入 used list 头部
-    node->next = list->head.next;
-    node->prev = &(list->head);
-    list->head.next->prev = node;
-    list->head.next = node;
+    if (list->current_size == 0) {
+        list->head = node;
+        node->prev = node->next = NULL;
+    } else {
+        node->prev = NULL;
+        node->next = list->head;
+        list->head->prev = node;
+        list->head = node;
+    }
 
     list->current_size++;
     return node;
@@ -96,15 +105,15 @@ context *context_list_get_empty(context_list_t *list)
     context_node_t *node;
     
     if (list->used_size < list->current_size) {
-        //node = list->head;
-        //int i;
-        for (node = list->head.next; node != &(list->head); node = node->next) {
+        node = list->head;
+        int len = list->current_size;
+        while (len--) {
             if (node->mask == MASK_NONE) {
                 node->mask = (MASK_CLIENT | MASK_REMOTE);
                 list->used_size++;
                 return node->c;
             }
-            //node = node->next;
+            node = node->next;
         }
     }
 
@@ -154,13 +163,17 @@ void context_list_remove(context_list_t *list, context *c, int mask)
 
     node->mask &= (~mask);
     if (node->mask == MASK_NONE) {
-        node->next->prev = node->prev;
-        node->prev->next = node->next;
         
-        node->next = list->head.next;
-        node->prev = &(list->head);
-        list->head.next->prev = node;
-        list->head.next = node;
+        if (node != list->head) {
+            node->prev->next = node->next;
+            if (node->next != NULL) {
+                node->next->prev = node->prev;
+            }
+            node->prev = NULL;
+            node->next = list->head;
+            list->head->prev = node;
+            list->head = node;
+        }
         list->used_size--;
     }
 }
