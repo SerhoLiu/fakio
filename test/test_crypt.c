@@ -1,8 +1,11 @@
 #include "../src/fcrypt.h"
 #include <string.h>
 #include <stdio.h>
-
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/time.h>
 
 long long get_ustime_sec(void)
@@ -16,44 +19,56 @@ long long get_ustime_sec(void)
     return ust;
 }
 
+long long bench_urandom(int times)
+{
+    int i;
+    FILE *urandom;
+    unsigned char key[16];
+
+    long long start = get_ustime_sec();
+    for (i = 0; i < times; i++) {
+        urandom = fopen ("/dev/urandom", "r");
+        if (urandom == NULL) {
+            fprintf (stderr, "Cannot open /dev/urandom!\n");
+            return 0;
+        }
+        fread (key, sizeof(char), 16, urandom);
+        fclose(urandom);    
+    }
+
+    return (get_ustime_sec() - start);
+}
+
+long long bench_urandom2(int times)
+{
+    int fd, i, rc, len;
+    unsigned char key[16];
+    len = 0;
+    long long start = get_ustime_sec();
+    for (i = 0; i < times; i++) {
+        fd = open("/dev/urandom", O_RDONLY);
+        if (fd < 0) {
+            fprintf (stderr, "Cannot open /dev/urandom!\n");
+            return 0;
+        }
+
+        while (len < 16) {
+            rc = read(fd, key+len, 16-len);
+            if (rc < 0) {
+                fprintf (stderr, "Cannot open /dev/urandom!\n");
+                break;
+            }
+            len += rc;
+        }
+        close(fd);
+        len = 0;   
+    }
+    return (get_ustime_sec() - start);
+}
 
 int main(int argc, char const *argv[])
 {
-    fcrypt_ctx fctx;
-    unsigned char key[8] = { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
-    long long s, x;
-    int i, times;
-    times = atoi(argv[1]);
-    s = get_ustime_sec();
-    for (i = 0; i < times; i++) {
-        FAKIO_INIT_CRYPT(&fctx, key, 8);   
-    }
-    x = get_ustime_sec();
-    printf("%d time %lld\n", times, x - s);
-
-    unsigned char buf[10] = "serho liu";
-    unsigned char buf1[10] = "secho lia";
-    unsigned char buf2[10] = "secoo lia";
-
-    printf("old %s\n", buf);
-
-    FAKIO_ENCRYPT(&fctx, buf, 10);
-    printf("en %s\n", buf);
-    
-    FAKIO_DECRYPT(&fctx, buf, 10);
-    printf("dn %s\n", buf);
-    FAKIO_ENCRYPT(&fctx, buf1, 10);
-    FAKIO_ENCRYPT(&fctx, buf2, 10);
-    
-    printf("en %s\n", buf1);
-    printf("en %s\n", buf2);
-
-    
-    FAKIO_DECRYPT(&fctx, buf1, 10);
-    FAKIO_DECRYPT(&fctx, buf2, 10);
-    
-    
-    printf("dn %s\n", buf1);
-    printf("dn %s\n", buf2);
+    long long times = bench_urandom2(atoi(argv[1]));
+    printf("%lld\n", times);
     return 0;
 }
