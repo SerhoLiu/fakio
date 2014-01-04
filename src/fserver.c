@@ -16,8 +16,6 @@
 static fcrypt_ctx fctx;
 static context_list_t *list;
 
-
-
 void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     request r;
