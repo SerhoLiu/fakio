@@ -1,8 +1,48 @@
-
-
+## 整体结构图
 
             Response Buffer
         /          |         \
 Remote           Server         Client
         \          |         /
              Request Buffer  
+
+说明如下：
+    1. Client: 发起请求的一方
+    2. Remote: Client 请求的真实地址（主机）
+
+## 握手协议
+
+1. Client 请求
+    
+    根据 SOCKS5 协议的 Request 部分修改得到握手协议的 Client 请求部分，协议格式如下所示：
+
+        +----+----------+-----------+------+----------+----------+
+        |VER | USERNAME |  PASSWORD | ATYP | DST.ADDR | DST.PORT |
+        +----+----------+-----------+------+----------+----------+
+        | 1  | Variable |     32    |  1   | Variable |    2     |
+        +----+----------+-----------+------+----------+----------+
+
+    其中:
+        +. VER: protocol version X'05'
+        +. USERNAME: 用户名，变长，第一个字节表示长度
+        +. PASSWORD: 密码，32字节，可以使用 MD5 生成
+        +. 剩下和 SOCKS5 协议相同
+
+    注：请求数据采用 AES256-cfb 进行加密
+
+2. Server 响应
+    
+    这个响应是对 Client 而言的，出于安全考虑（可能是想当然，因为没有实际结果可以证实)每次请求
+    Server 会发送一个随机密钥给 Client，用于此次请求。
+
+        +----+-------+
+        |VER |  KEY  |
+        +----+-------+
+        | 1  |  16   |
+        +----+-------+
+
+    其中：
+        +. VER: protocol version X'05'
+        +. KEY: AES128-cfb 加密所用的密钥
+
+    
