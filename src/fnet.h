@@ -12,14 +12,18 @@
 #define SOCKS_ATYPE_IPV4 0x01
 #define SOCKS_ATYPE_DNAME 0x03
 
+#define MAX_ADDR_LEN 256
+#define MAX_USERNAME 256
+
 #define FNET_CONNECT_BLOCK 1
 #define FNET_CONNECT_NONBLOCK 0
 
 typedef struct {
-    char addr[100];
-    char port[6];
+    char addr[MAX_ADDR_LEN];
+    char port[8];
+    char username[MAX_USERNAME];
     int rlen;
-} request;
+} request_t;
 
 int set_nonblocking(int fd);
 int set_socket_option(int fd);
@@ -27,8 +31,11 @@ int set_socket_option(int fd);
 int fnet_create_and_bind(const char *addr, const char *port);
 int fnet_create_and_connect(const char *addr, const char *port, int blocking);
 
-
-int socks5_request_resolve(const unsigned char *buffer, int buflen, request *r);
+/* for client */
+int socks5_request_resolve(const unsigned char *buffer, int buflen, request_t *req);
 int socks5_get_server_reply(const char *ip, const char *port, unsigned char *reply);
+
+/* for server */
+int fakio_request_resolve(const unsigned char *buffer, int buflen, request_t *req);
 
 #endif
