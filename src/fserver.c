@@ -1,7 +1,5 @@
 #include <errno.h>
-#include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/socket.h>
@@ -13,12 +11,11 @@
 #include "fcontext.h"
 #include "fhandler.h"
 
-static fcrypt_ctx fctx;
 static context_list_t *list;
 
-void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+void server_client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    request r;
+    request_t req;
     unsigned char buffer[BUFSIZE];
     int client_fd = fd;
 
@@ -39,7 +36,7 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
         }
 
         if (rc > 0) {
-            FAKIO_DECRYPT(&fctx, buffer, rc);
+            //FAKIO_DECRYPT(&fctx, buffer, rc);
 
             LOG_DEBUG("server and remote %d talk recv len %d", client_fd, rc);
             if (buffer[0] != 0x05) {
@@ -47,11 +44,11 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
                 break;
             }
 
-            if (socks5_request_resolve(buffer, rc, &r) < 0) {
+            if (socks5_request_resolve(buffer, rc, &req) < 0) {
                 LOG_WARN("socks5 request resolve error");
             }
             
-            int remote_fd = fnet_create_and_connect(r.addr, r.port, FNET_CONNECT_NONBLOCK);
+            int remote_fd = fnet_create_and_connect(req.addr, req.port, FNET_CONNECT_NONBLOCK);
             if (remote_fd < 0) {
                 break;
             }
@@ -73,10 +70,10 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
 
             delete_event(loop, client_fd, EV_RDABLE);
             
-            /* buffer 中可能含有其它需要发送到 client 的数据 */
-            if (rc > r.rlen) {
-                memcpy(FBUF_WRITE_AT(c->req), buffer+r.rlen, rc-r.rlen);
-                FBUF_COMMIT_WRITE(c->req, rc - r.rlen);
+            /* buffer 中可能含有其它需要发送到 Remote 的数据 */
+            if (rc > req.rlen) {
+                memcpy(FBUF_WRITE_AT(c->req), buffer+req.rlen, rc-req.rlen);
+                FBUF_COMMIT_WRITE(c->req, rc - req.rlen);
                 create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
             } else {
                 create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);
@@ -93,9 +90,6 @@ void server_client_reply_cb(struct event_loop *loop, int fd, int mask, void *evd
 }
 
 
-
-
-
 int main (int argc, char *argv[])
 {
     if (argc != 2) {
@@ -106,7 +100,7 @@ int main (int argc, char *argv[])
     //signal(SIGPIPE, SIG_IGN);
 
     /* 初始化加密函数 */
-    FAKIO_INIT_CRYPT(&fctx, cfg.key, MAX_KEY_LEN);
+    //FAKIO_INIT_CRYPT(&fctx, cfg.key, MAX_KEY_LEN);
     
     /* 初始化 Context */
     list = context_list_create(1000);
@@ -131,7 +125,7 @@ int main (int argc, char *argv[])
         LOG_ERROR("create server listen error");
     }
 
-    create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, &server_client_reply_cb);
+    create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, &server_client_handshake_cb);
     LOG_INFO("Fakio Server Start...... Binding in %s:%s", cfg.server, cfg.server_port);
     LOG_INFO("Fakio Server Event Loop Start, Use %s", get_event_api_name());
     start_event_loop(loop);
