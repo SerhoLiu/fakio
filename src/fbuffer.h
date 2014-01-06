@@ -20,6 +20,8 @@ typedef struct {
     }                                          \
 } while (0)
 
+#define FBUF_FREE(B) (free(B))
+
 #define FBUF_WRITE_AT(B) ((B)->buffer)
 
 #define FBUF_COMMIT_WRITE(B, A) ((B)->length += (A))
