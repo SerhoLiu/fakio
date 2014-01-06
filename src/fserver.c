@@ -11,24 +11,23 @@
 #include "fcontext.h"
 #include "fhandler.h"
 
+#define HAND_DATA_SIZE 1024
+
 static context_list_t *list;
 
-void server_client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    request_t req;
-    unsigned char buffer[BUFSIZE];
     int client_fd = fd;
+    fbuffer *buffer = (fbuffer *)evdata;
 
-    /* 此处 while 是比较"脏"的用法 */
     while (1) {
-        int rc = recv(client_fd, buffer, BUFSIZE, 0);
+        int rc = recv(client_fd, FBUF_WRITE_AT(buffer), BUFSIZE, 0);
 
         if (rc < 0) {
-            if (errno != EAGAIN) {
-                LOG_DEBUG("recv() failed: %s", strerror(errno));
-                break;
+            if (errno == EAGAIN) {
+                return;    
             }
-            return;
+            break;
         }
         if (rc == 0) {
             LOG_DEBUG("remote %d connection closed\n", client_fd);
@@ -36,57 +35,20 @@ void server_client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
         }
 
         if (rc > 0) {
-            //FAKIO_DECRYPT(&fctx, buffer, rc);
-
-            LOG_DEBUG("server and remote %d talk recv len %d", client_fd, rc);
-            if (buffer[0] != 0x05) {
-                LOG_WARN("remote %d not socks5 request %d", client_fd, buffer[0]);
-                break;
+            FBUF_COMMIT_WRITE(buffer, rc);
+            if (FBUF_DATA_LEN(buffer) < HAND_DATA_SIZE) {
+                continue;
             }
 
-            if (socks5_request_resolve(buffer, rc, &req) < 0) {
-                LOG_WARN("socks5 request resolve error");
-            }
-            
-            int remote_fd = fnet_create_and_connect(req.addr, req.port, FNET_CONNECT_NONBLOCK);
-            if (remote_fd < 0) {
-                break;
-            }
-            if (set_socket_option(remote_fd) < 0) {
-                LOG_WARN("set socket option error");
-            }
-            context *c = context_list_get_empty(list);
-            if (c == NULL) {
-                LOG_WARN("get context errno");
-                close(remote_fd);
-                break;
-            }
+            // TODO 解析
 
-            LOG_DEBUG("client %d remote %d at %p", client_fd, remote_fd, c);
-            c->client_fd = client_fd;
-            c->remote_fd = remote_fd;
-            c->loop = loop;
-            c->list = list;
-
-            delete_event(loop, client_fd, EV_RDABLE);
-            
-            /* buffer 中可能含有其它需要发送到 Remote 的数据 */
-            if (rc > req.rlen) {
-                memcpy(FBUF_WRITE_AT(c->req), buffer+req.rlen, rc-req.rlen);
-                FBUF_COMMIT_WRITE(c->req, rc - req.rlen);
-                create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
-            } else {
-                create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);
-            }
-            memset(buffer, 0, BUFSIZE);
-            return;
         }
     }
 
     delete_event(loop, client_fd, EV_WRABLE);
     delete_event(loop, client_fd, EV_RDABLE);
     close(client_fd);
-    memset(buffer, 0, BUFSIZE);
+    FBUF_FREE(buffer);
 }
 
 
@@ -125,7 +87,7 @@ int main (int argc, char *argv[])
         LOG_ERROR("create server listen error");
     }
 
-    create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, &server_client_handshake_cb);
+    create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, &client_handshake_cb);
     LOG_INFO("Fakio Server Start...... Binding in %s:%s", cfg.server, cfg.server_port);
     LOG_INFO("Fakio Server Event Loop Start, Use %s", get_event_api_name());
     start_event_loop(loop);

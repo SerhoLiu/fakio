@@ -85,8 +85,11 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         set_nonblocking(client_fd);
         set_socket_option(client_fd);
 
+        fbuffer *buffer;
+        FBUF_CREATE(buffer);
+
         LOG_DEBUG("new client %d comming connection", client_fd);
-        create_event(loop, client_fd, EV_RDABLE, evdata, NULL);
+        create_event(loop, client_fd, EV_RDABLE, evdata, buffer);
         break;
     }
 }
