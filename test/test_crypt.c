@@ -7,6 +7,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/time.h>
+#include <openssl/rand.h>
+
 
 long long get_ustime_sec(void)
 {
@@ -61,14 +63,42 @@ long long bench_urandom2(int times)
             len += rc;
         }
         close(fd);
-        len = 0;   
+        len = 0;
+
+        int j;
+        for (j = 0; j < 16; j++) {
+            printf("%d ", key[j]);
+        }
+        printf("\n");  
     }
     return (get_ustime_sec() - start);
 }
 
+
+long long bench_openssl_random(int times)
+{
+    int i;
+    unsigned char key[16];
+
+    long long start = get_ustime_sec();
+    for (i = 0; i < times; i++) {
+        RAND_bytes(key, 16);
+
+        int j;
+        for (j = 0; j < 16; j++) {
+            printf("%d ", key[j]);
+        }
+        printf("\n");
+    }
+    return (get_ustime_sec() - start);
+}
+
+
+
 int main(int argc, char const *argv[])
 {
-    long long times = bench_urandom2(atoi(argv[1]));
-    printf("%lld\n", times);
+    long long times1 = bench_urandom2(atoi(argv[1]));
+    long long times2 = bench_openssl_random(atoi(argv[1]));
+    printf("%lld vs %lld\n", times1, times2);
     return 0;
 }

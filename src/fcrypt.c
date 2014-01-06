@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 
 
 void random_bytes(uint8_t *buffer, size_t blen)
@@ -10,19 +11,20 @@ void random_bytes(uint8_t *buffer, size_t blen)
 
     len = 0;
     fd = open("/dev/urandom", O_RDONLY);
-    if (fd < 0) {
-        close(fd);
-        return;
+    if (fd > 0) {
+        while (len < blen) {
+            rc = read(fd, buffer+len, blen-len);
+            if (rc < 0) {
+                break;
+            }
+            len += rc;
+        }
+        close(fd);    
     }
     
-    while (len < blen) {
-        rc = read(fd, buffer+len, blen-len);
-        if (rc < 0) {
-            break;
-        }
-        len += rc;
+    if (len < blen) {
+        RAND_bytes(buffer, blen);
     }
-    close(fd);
 }
 
 
