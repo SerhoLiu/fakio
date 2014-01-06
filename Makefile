@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O1 -g -Wall -D NCRYPT -lcrypto
+CFLAGS = -std=c99 -O1 -g -Wall -D NCRYPT -lcrypto
 
 UNAME_S := $(shell uname -s)
 
