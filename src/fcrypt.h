@@ -2,7 +2,8 @@
 #define _FAKIO_CRYPT_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
-void random_key(unsigned char *key, size_t keylen);
+void random_key(uint8_t *key, size_t keylen);
 
 #endif
