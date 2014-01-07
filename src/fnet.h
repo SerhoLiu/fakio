@@ -1,6 +1,8 @@
 #ifndef _FAKIO_NET_H_
 #define _FAKIO_NET_H_
 
+#include "fcommon.h"
+
 /* Socks5 define */
 #define SOCKS_VER 0x05
 #define SOCKS_NMETHODS 0x01
@@ -13,7 +15,6 @@
 #define SOCKS_ATYPE_DNAME 0x03
 
 #define MAX_ADDR_LEN 256
-#define MAX_USERNAME 256
 
 #define FNET_CONNECT_BLOCK 1
 #define FNET_CONNECT_NONBLOCK 0
