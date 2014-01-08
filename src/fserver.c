@@ -8,8 +8,8 @@
 #include "fevent.h"
 #include "fnet.h"
 #include "fcrypt.h"
-#include "fcontext.h"
 #include "fhandler.h"
+#include "fakio.h"
 
 #define HAND_DATA_SIZE 1024
 
@@ -18,10 +18,10 @@ static context_list_t *list;
 void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     int client_fd = fd;
-    fbuffer *buffer = (fbuffer *)evdata;
+    fakio_context_t *fctx = evdata;
 
     while (1) {
-        int rc = recv(client_fd, FBUF_WRITE_AT(buffer), BUFSIZE, 0);
+        int rc = recv(client_fd, fctx->hand+fctx->length, HAND_DATA_SIZE-fctx->length, 0);
 
         if (rc < 0) {
             if (errno == EAGAIN) {
@@ -35,8 +35,8 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
         }
 
         if (rc > 0) {
-            FBUF_COMMIT_WRITE(buffer, rc);
-            if (FBUF_DATA_LEN(buffer) < HAND_DATA_SIZE) {
+            fctx->length += rc;
+            if (fctx->length < HAND_DATA_SIZE) {
                 continue;
             }
 
@@ -48,7 +48,6 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
     delete_event(loop, client_fd, EV_WRABLE);
     delete_event(loop, client_fd, EV_RDABLE);
     close(client_fd);
-    FBUF_FREE(buffer);
 }
 
 

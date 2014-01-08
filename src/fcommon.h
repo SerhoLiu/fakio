@@ -1,5 +1,5 @@
-#ifndef _FAKIO_H_
-#define _FAKIO_H_
+#ifndef _FAKIO_COMMON_H_
+#define _FAKIO_COMMON_H_
 
 #include <stddef.h> /* for size_t */
 #include <stdint.h> /* for uint*_t */

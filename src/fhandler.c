@@ -1,9 +1,10 @@
 #include "fhandler.h"
 #include <errno.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include "flog.h"
 #include "fnet.h"
-#include "fcontext.h"
+#include "fakio.h"
 
 
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
@@ -85,11 +86,14 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         set_nonblocking(client_fd);
         set_socket_option(client_fd);
 
-        fbuffer *buffer;
-        FBUF_CREATE(buffer);
+        fakio_context_t *fctx = malloc(sizeof(*fctx));
+        if (fctx == NULL) {
+            close(client_fd);
+            return;
+        }
 
         LOG_DEBUG("new client %d comming connection", client_fd);
-        create_event(loop, client_fd, EV_RDABLE, evdata, buffer);
+        create_event(loop, client_fd, EV_RDABLE, evdata, fctx);
         break;
     }
 }
