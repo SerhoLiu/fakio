@@ -1,13 +1,13 @@
 #ifndef _FAKIO_BUFFER_H_
 #define _FAKIO_BUFFER_H_
 
+#include "fcommon.h"
 #include <string.h>
 #include <stdlib.h>
 
-#define BUFSIZE 4088
 
 typedef struct {
-    unsigned char buffer[BUFSIZE];
+    uint8_t buffer[BUFSIZE];
     int length;
     int start;
 } fbuffer;
