@@ -22,6 +22,7 @@ typedef struct {
     struct context_list *list;
 
     fuser_t *user;
+    uint8_t key[32];
     EVP_CIPHER_CTX *e_ctx;
     EVP_CIPHER_CTX *d_ctx;
 } context;
