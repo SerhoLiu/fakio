@@ -43,5 +43,6 @@
 
     其中：
         +. VER: protocol version X'05'
-        +. KEY: AES128-cfb 加密所用的密钥
+        +. KEY: AES128-cfb 加密所用的密钥（通过 AES128-cfb 加密）
 
+三：传输数据包
