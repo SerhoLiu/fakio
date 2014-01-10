@@ -5,7 +5,6 @@
 #include <sys/socket.h>
 #include "flog.h"
 #include "config.h"
-#include "fevent.h"
 #include "fnet.h"
 #include "fcrypt.h"
 #include "fhandler.h"
@@ -13,7 +12,6 @@
 
 #define HAND_DATA_SIZE 1024
 
-static context_list_t *list;
 
 void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
@@ -63,14 +61,16 @@ int main (int argc, char *argv[])
     /* 初始化加密函数 */
     //FAKIO_INIT_CRYPT(&fctx, cfg.key, MAX_KEY_LEN);
     
+    fserver_t server;
+
     /* 初始化 Context */
-    list = context_list_create(1000);
-    if (list == NULL) {
+    server.list = context_list_create(100);
+    if (server.list == NULL) {
         LOG_ERROR("Start Error!");
     }
 
     event_loop *loop;
-    loop = create_event_loop(1000);
+    loop = create_event_loop(100);
     if (loop == NULL) {
         LOG_ERROR("Create Event Loop Error!");
     }
@@ -86,12 +86,14 @@ int main (int argc, char *argv[])
         LOG_ERROR("create server listen error");
     }
 
-    create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, &client_handshake_cb);
+    server.handshake = &client_handshake_cb;
+    create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, &server);
+
     LOG_INFO("Fakio Server Start...... Binding in %s:%s", cfg.server, cfg.server_port);
     LOG_INFO("Fakio Server Event Loop Start, Use %s", get_event_api_name());
     start_event_loop(loop);
     LOG_INFO("I'm Done!");
-    context_list_free(list);
+    context_list_free(server.list);
     delete_event_loop(loop);
     return 0;
 }
