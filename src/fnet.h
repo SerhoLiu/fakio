@@ -19,10 +19,14 @@
 #define FNET_CONNECT_BLOCK 1
 #define FNET_CONNECT_NONBLOCK 0
 
+#define FNET_RESOLVE_USER 0
+#define FNET_RESOLVE_NET  1
+
 typedef struct {
+    uint8_t IV[16];
+    char username[MAX_USERNAME];
     char addr[MAX_ADDR_LEN];
     char port[8];
-    char username[MAX_USERNAME];
     int rlen;
 } request_t;
 
@@ -37,6 +41,6 @@ int socks5_request_resolve(const unsigned char *buffer, int buflen, request_t *r
 int socks5_get_server_reply(const char *ip, const char *port, unsigned char *reply);
 
 /* for server */
-int fakio_request_resolve(const unsigned char *buffer, int buflen, request_t *req);
+int fakio_request_resolve(const uint8_t *buffer, int buflen, request_t *req, int action);
 
 #endif
