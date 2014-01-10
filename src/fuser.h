@@ -3,11 +3,11 @@
 
 #include "fcommon.h"
 
-struct user {
+struct fuser {
     char username[MAX_USERNAME];
     uint8_t key[16];
 };
 
-typedef struct user user_t;
+typedef struct user fuser_t;
 
 #endif
