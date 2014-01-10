@@ -86,14 +86,14 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         set_nonblocking(client_fd);
         set_socket_option(client_fd);
 
-        fakio_context_t *fctx = malloc(sizeof(*fctx));
-        if (fctx == NULL) {
+        fserver_t *server = evdata;
+        context *c = context_list_get_empty(server->list);
+        if (c == NULL) {
+            LOG_WARN("Client %d Can't get context", client_fd);
             close(client_fd);
-            return;
         }
-
         LOG_DEBUG("new client %d comming connection", client_fd);
-        create_event(loop, client_fd, EV_RDABLE, evdata, fctx);
+        create_event(loop, client_fd, EV_RDABLE, server->handshake, c);
         break;
     }
 }

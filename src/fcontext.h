@@ -1,7 +1,9 @@
 #ifndef _FAKIO_CONTEXT_H_
 #define _FAKIO_CONTEXT_H_
 
+#include <openssl/evp.h>
 #include "fbuffer.h"
+#include "fuser.h"
 
 #define MASK_NONE 0
 #define MASK_CLIENT 1
@@ -18,6 +20,11 @@ typedef struct {
     struct event_loop *loop;
     struct context_node *node;
     struct context_list *list;
+
+    fuser_t *user;
+    uint8_t key[32];
+    EVP_CIPHER_CTX *e_ctx;
+    EVP_CIPHER_CTX *d_ctx;
 } context;
 
 typedef struct context_list context_list_t;
