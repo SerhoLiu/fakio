@@ -86,7 +86,7 @@ done:
     delete_event(loop, client_fd, EV_WRABLE);
     delete_event(loop, client_fd, EV_RDABLE);
     close(client_fd);
-    //TODO: 释放 context
+    release_context(c);
 }
 
 
