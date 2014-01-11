@@ -191,3 +191,8 @@ void context_list_remove(context_list_t *list, context *c, int mask)
         list->used_size--;
     }
 }
+
+void release_context(context *c)
+{
+    c->node->mask = MASK_NONE;
+}

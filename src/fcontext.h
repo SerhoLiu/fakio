@@ -37,4 +37,6 @@ context *context_list_get_empty(context_list_t *list);
 
 void context_list_remove(context_list_t *list, context *c, int mask);
 
+void release_context(context *c);
+
 #endif
