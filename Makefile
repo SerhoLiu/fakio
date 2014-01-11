@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=c99 -O2 -Wall -D NDEBUG
+CFLAGS =  -O2 -Wall -D NDEBUG -lcrypto
 
 UNAME_S := $(shell uname -s)
 
@@ -13,7 +13,7 @@ OBJ = src/config.o src/fevent.o src/fnet.o \
 all: fakio-server fakio-local
 
 fakio-server: $(OBJ)
-	$(CC) $(CFLAGS) -o $@  src/fserver.c $(OBJ)
+	$(CC) $(CFLAGS) -o $@  src/fserver.c $(OBJ) -lcrypto
 
 fakio-local: $(OBJ)
 	$(CC) $(CFLAGS) -o $@ src/flocal.c $(OBJ)

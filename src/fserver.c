@@ -69,7 +69,7 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
     c->remote_fd = remote_fd;
     c->loop = loop;
 
-    random_key(buffer, 48);
+    random_bytes(buffer, 48);
     memcpy(c->key, buffer+16, 32);
     aes_init(cfg.key, buffer, c->e_ctx, c->d_ctx);
     aes_encrypt(c->e_ctx, c->key, 32, buffer+16);

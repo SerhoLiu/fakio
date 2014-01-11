@@ -91,7 +91,7 @@ int fakio_encrypt(context *c)
     memcpy(plain, FBUF_DATA_AT(c->res), FBUF_DATA_LEN(c->res));
     *(uint16_t *)(plain+4094) = FBUF_DATA_LEN(c->res);
 
-    random_key(FBUF_WRITE_SEEK(c->res, 4096), 16);
+    random_bytes(FBUF_WRITE_SEEK(c->res, 4096), 16);
 
     EVP_EncryptInit_ex(c->e_ctx, EVP_aes_128_cfb128(), NULL,
                        c->key, FBUF_DATA_SEEK(c->res, 4096));
