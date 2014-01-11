@@ -4,7 +4,7 @@
 #include <stddef.h> /* for size_t */
 #include <stdint.h> /* for uint*_t */
 
-#define BUFSIZE 4088
+#define BUFSIZE (4096+16)
 #define MAX_USERNAME 256
 
 

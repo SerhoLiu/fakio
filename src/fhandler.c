@@ -5,33 +5,41 @@
 #include "flog.h"
 #include "fnet.h"
 #include "fakio.h"
+#include "fcrypt.h"
 
 
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-    if (FBUF_DATA_LEN(c->req) > 0) {
-        delete_event(loop, fd, EV_RDABLE);
-        return;
-    }
+    //if (FBUF_DATA_LEN(c->req) > 0) {
+    //    delete_event(loop, fd, EV_RDABLE);
+    //    return;
+    //}
 
-    int rc = recv(fd, FBUF_WRITE_AT(c->req), BUFSIZE, 0);
-    if (rc < 0) {
-        if (errno == EAGAIN) {
+    while (1) {
+        int need = BUFSIZE - FBUF_DATA_LEN(c->req);
+        int rc = recv(fd, FBUF_WRITE_AT(c->req), need, 0);
+        
+        if (rc < 0) {
+            if (errno == EAGAIN) {
+                return;
+            }
+            LOG_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
+            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
-        LOG_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
-        context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
-        return;
+        if (rc == 0) {
+            LOG_DEBUG("client %d connection closed", fd);
+            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+            return;
+        }
+        FBUF_COMMIT_WRITE(c->req, rc);
+        if (FBUF_DATA_LEN(c->req) < BUFSIZE) {
+            continue;
+        }
+        break;
     }
-    if (rc == 0) {
-        LOG_DEBUG("client %d connection closed", fd);
-        context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
-        return;
-    }
-        
-    FBUF_COMMIT_WRITE(c->req, rc);
-    //FAKIO_ENCRYPT(&fctx, FBUF_DATA_AT(c->req), FBUF_DATA_LEN(c->req));
+    fakio_decrypt(c); 
 
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
@@ -156,7 +164,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     }
 
     FBUF_COMMIT_WRITE(c->res, rc);
-    //FAKIO_DECRYPT(&fctx, FBUF_DATA_AT(c->res), FBUF_DATA_LEN(c->res));
+    fakio_encrypt(c);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
 }
