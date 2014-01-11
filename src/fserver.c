@@ -45,10 +45,10 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
     request_t req;
     fakio_request_resolve(FBUF_DATA_AT(c->req), HAND_DATA_SIZE,
                           &req, FNET_RESOLVE_USER);
-    aes_init(cfg.key, req.IV, c->e_ctx, c->d_ctx);
+    aes_init(cfg.key, req.IV, &c->e_ctx, &c->d_ctx);
 
     uint8_t buffer[HAND_DATA_SIZE];
-    int len = aes_decrypt(c->d_ctx, FBUF_DATA_AT(c->req), 
+    int len = aes_decrypt(&c->d_ctx, FBUF_DATA_AT(c->req), 
                           HAND_DATA_SIZE-req.rlen, buffer+req.rlen);
     r = fakio_request_resolve(buffer+req.rlen, len, &req, FNET_RESOLVE_NET);
     if (r != 1) {
@@ -71,8 +71,8 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
 
     random_bytes(buffer, 48);
     memcpy(c->key, buffer+16, 32);
-    aes_init(cfg.key, buffer, c->e_ctx, c->d_ctx);
-    aes_encrypt(c->e_ctx, c->key, 32, buffer+16);
+    aes_init(cfg.key, buffer, &c->e_ctx, &c->d_ctx);
+    aes_encrypt(&c->e_ctx, c->key, 32, buffer+16);
 
     //TODO:
     send(client_fd, buffer, 48, 0);

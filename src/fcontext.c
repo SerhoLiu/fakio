@@ -76,7 +76,7 @@ static context *context_create()
     }
     
     c->user = NULL;
-    c->d_ctx = c->e_ctx = NULL;
+    //c->d_ctx = c->e_ctx = NULL;
     return c;
 }
 

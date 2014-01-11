@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS =  -O2 -Wall -D NDEBUG -lcrypto
+CFLAGS = -O1 -g -Wall  -lcrypto
 
 UNAME_S := $(shell uname -s)
 

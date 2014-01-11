@@ -68,14 +68,14 @@ int aes_cleanup(EVP_CIPHER_CTX *e_ctx, EVP_CIPHER_CTX *d_ctx)
 int fakio_decrypt(context *c)
 {
     uint8_t *buffer = FBUF_DATA_AT(c->req);
-    EVP_DecryptInit_ex(c->d_ctx, EVP_aes_128_cfb128(), NULL, c->key, buffer+4096);
+    EVP_DecryptInit_ex(&c->d_ctx, EVP_aes_128_cfb128(), NULL, c->key, buffer+4096);
 
     int c_len, f_len = 0;
     uint8_t plain[4096];
 
-    EVP_DecryptInit_ex(c->d_ctx, NULL, NULL, NULL, NULL);
-    EVP_DecryptUpdate(c->d_ctx, buffer+16, &c_len, plain, 4096);
-    EVP_DecryptFinal_ex(c->d_ctx, buffer+16+c_len, &f_len);
+    EVP_DecryptInit_ex(&c->d_ctx, NULL, NULL, NULL, NULL);
+    EVP_DecryptUpdate(&c->d_ctx, buffer+16, &c_len, plain, 4096);
+    EVP_DecryptFinal_ex(&c->d_ctx, buffer+16+c_len, &f_len);
     
     uint16_t datalen = *(uint16_t *)(plain+4094);
     FBUF_REST(c->req);
@@ -93,14 +93,14 @@ int fakio_encrypt(context *c)
 
     random_bytes(FBUF_WRITE_SEEK(c->res, 4096), 16);
 
-    EVP_EncryptInit_ex(c->e_ctx, EVP_aes_128_cfb128(), NULL,
+    EVP_EncryptInit_ex(&c->e_ctx, EVP_aes_128_cfb128(), NULL,
                        c->key, FBUF_DATA_SEEK(c->res, 4096));
 
     int c_len, f_len = 0;
-    EVP_EncryptInit_ex(c->e_ctx, NULL, NULL, NULL, NULL);
+    EVP_EncryptInit_ex(&c->e_ctx, NULL, NULL, NULL, NULL);
 
-    EVP_EncryptUpdate(c->e_ctx, FBUF_WRITE_AT(c->res), &c_len, plain, 4096);
-    EVP_EncryptFinal_ex(c->e_ctx, FBUF_WRITE_AT(c->res)+c_len, &f_len);
+    EVP_EncryptUpdate(&c->e_ctx, FBUF_WRITE_AT(c->res), &c_len, plain, 4096);
+    EVP_EncryptFinal_ex(&c->e_ctx, FBUF_WRITE_AT(c->res)+c_len, &f_len);
     FBUF_COMMIT_WRITE(c->res, BUFSIZE);
 
     return 1;
