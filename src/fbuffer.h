@@ -39,6 +39,8 @@ typedef struct {
     }                                  \
 } while (0);
 
-
+#define FBUF_REST(B) ((B)->length = (B)->start = 0)
+#define FBUF_WRITE_SEEK(B, A) ((B)->buffer+(A))
+#define FBUF_DATA_SEEK(B, A) ((B)->buffer+(A))
 
 #endif
