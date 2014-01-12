@@ -11,15 +11,13 @@
 void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-    //if (FBUF_DATA_LEN(c->req) > 0) {
-    //    delete_event(loop, fd, EV_RDABLE);
-    //    return;
-    //}
 
     while (1) {
         int need = BUFSIZE - FBUF_DATA_LEN(c->req);
+        printf("need %d\n", need);
         int rc = recv(fd, FBUF_WRITE_AT(c->req), need, 0);
-        
+        printf("client rc %d\n", rc);
+
         if (rc < 0) {
             if (errno == EAGAIN) {
                 return;
@@ -110,9 +108,10 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-
+    printf("send to remote\n");
     while (1) {
         int rc = send(fd, FBUF_DATA_AT(c->req), FBUF_DATA_LEN(c->req), 0);
+        printf("send to remote %d\n", rc);
         if (rc < 0) {
             if (errno == EAGAIN) {
                 return;
@@ -148,7 +147,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         return;
     }
 
-    int rc = recv(fd, FBUF_WRITE_AT(c->res), BUFSIZE, 0);
+    int rc = recv(fd, FBUF_WRITE_AT(c->res), 4094, 0);
     if (rc < 0) {
         if (errno == EAGAIN) {
                 return;

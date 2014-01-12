@@ -69,18 +69,20 @@ int fakio_decrypt(context *c, fbuffer *buf)
 {
     uint8_t *buffer = FBUF_DATA_AT(buf);
     EVP_DecryptInit_ex(&c->d_ctx, EVP_aes_128_cfb128(), NULL, c->key, buffer+4096);
-
+    //EVP_DecryptInit_ex(&c->d_ctx, EVP_aes_128_cfb128(), NULL, c->key, c->key);
     int c_len, f_len = 0;
     uint8_t plain[4096];
 
     EVP_DecryptInit_ex(&c->d_ctx, NULL, NULL, NULL, NULL);
-    EVP_DecryptUpdate(&c->d_ctx, buffer+16, &c_len, plain, 4096);
-    EVP_DecryptFinal_ex(&c->d_ctx, buffer+16+c_len, &f_len);
+    EVP_DecryptUpdate(&c->d_ctx, plain, &c_len, buffer, 4096);
+    EVP_DecryptFinal_ex(&c->d_ctx, plain+c_len, &f_len);
     
     uint16_t datalen = *(uint16_t *)(plain+4094);
-    FBUF_REST(buf);
-    memcpy(FBUF_WRITE_AT(buf), plain+2, datalen);
-    FBUF_COMMIT_WRITE(buf, datalen);
+
+    //FBUF_REST(buf);
+    memcpy(FBUF_WRITE_AT(buf), plain, datalen);
+    FBUF_DATA_LEN(buf) = datalen;
+
     return 1;
 }
 
@@ -88,20 +90,27 @@ int fakio_decrypt(context *c, fbuffer *buf)
 int fakio_encrypt(context *c, fbuffer *buf)
 {   
     uint8_t plain[4096];
+    printf("FBUF_DATA_LEN(buf) %d \n", FBUF_DATA_LEN(buf));
     memcpy(plain, FBUF_DATA_AT(buf), FBUF_DATA_LEN(buf));
     *(uint16_t *)(plain+4094) = FBUF_DATA_LEN(buf);
+    printf("%d\n", plain[4094]);
+    printf("%d\n", plain[4095]);
 
     random_bytes(FBUF_WRITE_SEEK(buf, 4096), 16);
+    //memcpy(FBUF_WRITE_SEEK(buf, 4096), c->key, 16);
 
     EVP_EncryptInit_ex(&c->e_ctx, EVP_aes_128_cfb128(), NULL,
                        c->key, FBUF_DATA_SEEK(buf, 4096));
+    //EVP_EncryptInit_ex(&c->e_ctx, EVP_aes_128_cfb128(), NULL,
+    //                   c->key, c->key);
 
     int c_len, f_len = 0;
     EVP_EncryptInit_ex(&c->e_ctx, NULL, NULL, NULL, NULL);
 
     EVP_EncryptUpdate(&c->e_ctx, FBUF_WRITE_AT(buf), &c_len, plain, 4096);
     EVP_EncryptFinal_ex(&c->e_ctx, FBUF_WRITE_AT(buf)+c_len, &f_len);
-    FBUF_COMMIT_WRITE(buf, BUFSIZE);
+    FBUF_DATA_LEN(buf) = BUFSIZE;
 
+    printf("encrypted %d\n", c_len+f_len);
     return 1;
 }
