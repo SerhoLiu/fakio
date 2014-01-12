@@ -94,6 +94,7 @@ static int ev_api_poll(event_loop *loop, struct timeval *tvp)
 
     retval = epoll_wait(state->epfd, state->events, loop->setsize,
             tvp ? (tvp->tv_sec*1000 + tvp->tv_usec/1000) : -1);
+    printf("epoll retval %d\n", retval);
     if (retval > 0) {
         int j;
 

@@ -235,33 +235,32 @@ int fakio_request_resolve(const uint8_t *buffer, int buflen, request_t *req, int
     }
 
     if (action == FNET_RESOLVE_NET) {
-        int start = req->rlen;
         
         /* 版本号 */
-        if (buffer[start] != SOCKS_VER) {
+        if (buffer[0] != SOCKS_VER) {
             LOG_WARN("SOCKS_VER not 5");
             return -1;
         }
 
         /*  IPv4 */
-        if (buffer[start+1] == SOCKS_ATYPE_IPV4) {
+        if (buffer[1] == SOCKS_ATYPE_IPV4) {
             if (inet_ntop(AF_INET, buffer + 2, req->addr, INET_ADDRSTRLEN) == NULL) {
                 LOG_WARN("IPv4 Error %s", strerror(errno));
             }
             ports = ntohs(*(uint16_t*)(buffer + 6));
             snprintf(req->port, 5, "%d", ports);
-            req->rlen = start + 1 + 1 + 4 + 2;
+            req->rlen = req->rlen + 1 + 1 + 4 + 2;
 
-        } else if (buffer[start+1] == SOCKS_ATYPE_DNAME) {
+        } else if (buffer[1] == SOCKS_ATYPE_DNAME) {
             uint8_t domain_len = *(uint8_t *)(buffer + 2);
-            memcpy(req->addr, buffer+start+3, domain_len);
+            memcpy(req->addr, buffer+3, domain_len);
             req->addr[domain_len] = '\0';
 
-            ports = ntohs(*(uint16_t*)(buffer + start + domain_len + 4));
+            ports = ntohs(*(uint16_t*)(buffer + domain_len + 3));
             snprintf(req->port, 5, "%d", ports);
-            req->rlen = start + 1 + 1 + 1 + domain_len + 2;
+            req->rlen = req->rlen + 1 + 1 + 1 + domain_len + 2;
         } else {
-            LOG_WARN("unsupported addrtype: %d", buffer[start+1]);
+            LOG_WARN("unsupported addrtype: %d", buffer[1]);
             return -1;
         }
         LOG_INFO("%s Connecting %s:%s", req->username, req->addr, req->port);

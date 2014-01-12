@@ -179,7 +179,9 @@ void context_list_remove(context_list_t *list, context *c, int mask)
 
     node->mask &= (~mask);
     if (node->mask == MASK_NONE) {
-        
+        FBUF_REST(node->c->req);
+        FBUF_REST(node->c->res);
+
         if (node != list->head) {
             node->prev->next = node->next;
             if (node->next != NULL) {
@@ -194,7 +196,10 @@ void context_list_remove(context_list_t *list, context *c, int mask)
     }
 }
 
+//TODO: 移到头
 void release_context(context *c)
 {
     c->node->mask = MASK_NONE;
+    FBUF_REST(c->req);
+    FBUF_REST(c->res);
 }
