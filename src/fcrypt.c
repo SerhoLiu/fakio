@@ -30,9 +30,9 @@ void random_bytes(uint8_t *buffer, size_t blen)
 int aes_init(uint8_t *key, uint8_t *iv, EVP_CIPHER_CTX *e_ctx, EVP_CIPHER_CTX *d_ctx)
 {
     EVP_CIPHER_CTX_init(e_ctx);
-    EVP_EncryptInit_ex(e_ctx, EVP_aes_128_cfb128(), NULL, key, iv);
+    EVP_EncryptInit_ex(e_ctx, EVP_aes_256_cfb128(), NULL, key, iv);
     EVP_CIPHER_CTX_init(d_ctx);
-    EVP_DecryptInit_ex(d_ctx, EVP_aes_128_cfb128(), NULL, key, iv);
+    EVP_DecryptInit_ex(d_ctx, EVP_aes_256_cfb128(), NULL, key, iv);
     return 0;
 }
 

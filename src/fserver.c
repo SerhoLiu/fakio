@@ -45,10 +45,12 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
     request_t req;
     fakio_request_resolve(FBUF_DATA_AT(c->req), HAND_DATA_SIZE,
                           &req, FNET_RESOLVE_USER);
+    
+    //TODO: 多用户根据用户名查找 key
     aes_init(cfg.key, req.IV, &c->e_ctx, &c->d_ctx);
 
     uint8_t buffer[HAND_DATA_SIZE];
-    int len = aes_decrypt(&c->d_ctx, FBUF_DATA_AT(c->req), 
+    int len = aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->req, req.rlen), 
                           HAND_DATA_SIZE-req.rlen, buffer+req.rlen);
     r = fakio_request_resolve(buffer+req.rlen, len, &req, FNET_RESOLVE_NET);
     if (r != 1) {
@@ -69,13 +71,13 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
     c->remote_fd = remote_fd;
     c->loop = loop;
 
-    random_bytes(buffer, 48);
-    memcpy(c->key, buffer+16, 32);
+    random_bytes(buffer, 32);
+    memcpy(c->key, buffer+16, 16);
     aes_init(cfg.key, buffer, &c->e_ctx, &c->d_ctx);
-    aes_encrypt(&c->e_ctx, c->key, 32, buffer+16);
+    aes_encrypt(&c->e_ctx, c->key, 16, buffer+16);
 
     //TODO:
-    send(client_fd, buffer, 48, 0);
+    send(client_fd, buffer, 32, 0);
 
     delete_event(loop, client_fd, EV_RDABLE);
     create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);    
