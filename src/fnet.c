@@ -144,12 +144,13 @@ end:
 }
 
 /* 使用 IPv4:port 格式生成服务器地址 */
-int socks5_get_server_reply(const char *ip, const char *port, unsigned char *reply)
+int socks5_get_server_reply(const char *ip, const char *port, uint8_t *reply)
 {
     if (reply == NULL) {
         return 0;
     }
     reply[0] = SOCKS_VER;
+    reply[1] = SOCKS_REP_SUCCEED;
     reply[2] = SOCKS_RSV;
     reply[3] = SOCKS_ATYPE_IPV4;
     
