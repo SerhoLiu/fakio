@@ -41,17 +41,19 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
         }
     }
 
+    LOG_DEBUG("HAND_DATA_SIZE %d", FBUF_DATA_LEN(c->req));
     // 用户认证
     request_t req;
     fakio_request_resolve(FBUF_DATA_AT(c->req), HAND_DATA_SIZE,
                           &req, FNET_RESOLVE_USER);
-    
+
     //TODO: 多用户根据用户名查找 key
     aes_init(cfg.key, req.IV, &c->e_ctx, &c->d_ctx);
 
     uint8_t buffer[HAND_DATA_SIZE];
     int len = aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->req, req.rlen), 
                           HAND_DATA_SIZE-req.rlen, buffer+req.rlen);
+
     r = fakio_request_resolve(buffer+req.rlen, len, &req, FNET_RESOLVE_NET);
     if (r != 1) {
         LOG_WARN("socks5 request resolve error");
@@ -70,6 +72,8 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
     c->client_fd = client_fd;
     c->remote_fd = remote_fd;
     c->loop = loop;
+    FBUF_REST(c->req);
+    FBUF_REST(c->res);
 
     random_bytes(buffer, 32);
     memcpy(c->key, buffer+16, 16);
@@ -77,7 +81,8 @@ void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata
     aes_encrypt(&c->e_ctx, c->key, 16, buffer+16);
 
     //TODO:
-    send(client_fd, buffer, 32, 0);
+    int p = send(client_fd, buffer, 32, 0);
+    printf("send %d\n", p);
 
     delete_event(loop, client_fd, EV_RDABLE);
     create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);    
@@ -102,8 +107,13 @@ int main (int argc, char *argv[])
 
     //signal(SIGPIPE, SIG_IGN);
 
-    /* 初始化加密函数 */
-    //FAKIO_INIT_CRYPT(&fctx, cfg.key, MAX_KEY_LEN);
+    char keystr[33];
+    strcpy(keystr, "098f6bcd(621d373cade4e832627b4f6");
+    
+    int i;
+    for (i = 0; i < 32; i++) {
+        cfg.key[i] = keystr[i];
+    }
     
     fserver_t server;
 

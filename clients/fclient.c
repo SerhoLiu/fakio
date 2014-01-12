@@ -155,11 +155,13 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
             //Request info
 
             random_bytes(FBUF_WRITE_AT(c->req), 16);
+
             *FBUF_WRITE_SEEK(c->req, 16) = client.name_len;
             memcpy(FBUF_WRITE_SEEK(c->req, 17), client.username, client.name_len);
             aes_init(client.key, FBUF_DATA_SEEK(c->req, 0), &c->e_ctx, &c->d_ctx);
             buffer[2] = SOCKS_VER;
             int c_len = 1024 - 16 - 1 - client.name_len;
+
             aes_encrypt(&c->e_ctx, buffer+2, c_len, FBUF_WRITE_SEEK(c->req, 16+1+client.name_len));
             FBUF_COMMIT_WRITE(c->req, HAND_DATA_SIZE);
 
@@ -231,15 +233,17 @@ void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
             return;
         }
 
-        FBUF_COMMIT_WRITE(c->req, rc);
-        if (FBUF_DATA_LEN(c->req) < 32) {
+        FBUF_COMMIT_WRITE(c->res, rc);
+        if (FBUF_DATA_LEN(c->res) < 32) {
             continue;
         }
         break;
     }
     
+
     aes_init(client.key, FBUF_DATA_AT(c->res), &c->e_ctx, &c->d_ctx);
     aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->res, 16), 16, c->key);
+    FBUF_REST(c->res);
 
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);
@@ -251,8 +255,9 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
 
     while (1) {
         int need = BUFSIZE - FBUF_DATA_LEN(c->res);
+        printf("need %d\n", need);
         int rc = recv(fd, FBUF_WRITE_AT(c->res), need, 0);
-        
+        printf("remote rc %d\n", rc);
         if (rc < 0) {
             if (errno == EAGAIN) {
                 return;
@@ -284,7 +289,7 @@ static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *
 {
 
     context *c = (context *)evdata;
-
+    
     while (1) {
         int rc = send(fd, FBUF_DATA_AT(c->req), FBUF_DATA_LEN(c->req), 0);
         if (rc < 0) {
@@ -302,6 +307,7 @@ static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *
              * c->recvlen - rc 中的数据，因此应该将其移到 recv buffer 前面
              */
             FBUF_COMMIT_READ(c->req, rc);
+            printf("FBUF_DATA_LEN(c->req) %d\n", FBUF_DATA_LEN(c->req));
             if (FBUF_DATA_LEN(c->req) <= 0) {
                 delete_event(loop, fd, EV_WRABLE);
                 create_event(loop, c->remote_fd, EV_RDABLE, &remote_readable_cb, c);
@@ -349,12 +355,14 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
 static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-    if (FBUF_DATA_LEN(c->req) > 0) {
-        delete_event(loop, fd, EV_RDABLE);
-        return;
-    }
 
-    int rc = recv(fd, FBUF_WRITE_AT(c->req), BUFSIZE, 0);
+    //if (FBUF_DATA_LEN(c->req) > 0) {
+    //    delete_event(loop, fd, EV_RDABLE);
+    //    return;
+    //}
+
+    int rc = recv(fd, FBUF_WRITE_AT(c->req), 4094, 0);
+    printf("read %d\n", rc);
     if (rc < 0) {
         if (errno == EAGAIN) {
                 return;
