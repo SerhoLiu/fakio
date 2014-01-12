@@ -39,7 +39,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
         break;
     }
-    fakio_decrypt(c); 
+    fakio_decrypt(c, c->req); 
 
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
@@ -164,7 +164,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     }
 
     FBUF_COMMIT_WRITE(c->res, rc);
-    fakio_encrypt(c);
+    fakio_encrypt(c, c->res);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
 }
