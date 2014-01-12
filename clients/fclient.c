@@ -28,13 +28,13 @@ void socks5_handshake1_cb(struct event_loop *loop, int fd, int mask, void *evdat
 void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 void server_handshake1_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdata);
-void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
-void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
-void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
-void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 
 
-void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     while (1) {
         int client_fd = accept(fd, NULL, NULL);
@@ -245,7 +245,7 @@ void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
     create_event(loop, c->client_fd, EV_RDABLE, &client_readable_cb, c);
 }
 
-void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
 
@@ -280,7 +280,7 @@ void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
 
 /* client 可写 */
-void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
 
     context *c = (context *)evdata;
@@ -313,7 +313,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 }
 
 
-void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
 
@@ -346,7 +346,7 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     }
 }
 
-void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
     if (FBUF_DATA_LEN(c->req) > 0) {
@@ -383,7 +383,7 @@ int main (int argc, char *argv[])
     memcpy(client.username, name, 5);
     client.name_len = 5;
 
-    char keystr[32];
+    char keystr[33];
     strcpy(keystr, "098f6bcd(621d373cade4e832627b4f6");
     
     int i;
@@ -391,7 +391,7 @@ int main (int argc, char *argv[])
         client.key[i] = keystr[i];
     }
 
-    strcpy(client.port, "1080");
+    strcpy(client.port, "1070");
 
 
     /* 初始化 Context */

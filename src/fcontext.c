@@ -93,6 +93,7 @@ static context_node_t *context_list_add_node(context_list_t *list)
         return NULL;
     }
     node->c->node = node;
+    node->c->list = list;
 
     // 将 node 插入 used list 头部
     if (list->current_size == 0) {
@@ -158,6 +159,7 @@ static void delete_and_close_fd(context *c, int fd)
 
 void context_list_remove(context_list_t *list, context *c, int mask)
 {
+    LOG_INFO("Context Remove");
     if (list == NULL || c == NULL || mask == MASK_NONE) return;
     context_node_t *node = c->node;
 

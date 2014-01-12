@@ -15,8 +15,8 @@ all: fakio-server fakio-local
 fakio-server: $(OBJ)
 	$(CC) $(CFLAGS) -o $@  src/fserver.c $(OBJ) -lcrypto
 
-fakio-local: $(OBJ)
-	$(CC) $(CFLAGS) -o $@ src/flocal.c $(OBJ)
+fakio-client: $(OBJ)
+	$(CC) $(CFLAGS) -I ./src -o $@ clients/fclient.c $(OBJ) -lcrypto
 
 
 .PHONY: clean
