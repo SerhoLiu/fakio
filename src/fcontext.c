@@ -157,7 +157,6 @@ static inline void delete_and_close_fd(context_t *c, int fd)
 
 void context_pool_release(context_pool_t *pool, context_t *c, int mask)
 {
-    LOG_INFO("Context Remove");
     if (pool == NULL || c == NULL || mask == MASK_NONE) return;
     struct context_node *node = c->node;
 
