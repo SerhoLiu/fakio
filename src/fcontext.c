@@ -1,10 +1,5 @@
 #include "fcontext.h"
-#include "fevent.h"
-#include "flog.h"
-//#include "fbuffer.h"
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
 #define MIN_MAXSIZE 16
 
@@ -194,12 +189,4 @@ void context_list_remove(context_list_t *list, context *c, int mask)
         }
         list->used_size--;
     }
-}
-
-//TODO: 移到头
-void release_context(context *c)
-{
-    c->node->mask = MASK_NONE;
-    FBUF_REST(c->req);
-    FBUF_REST(c->res);
 }

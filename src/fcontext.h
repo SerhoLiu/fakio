@@ -2,8 +2,7 @@
 #define _FAKIO_CONTEXT_H_
 
 #include <openssl/evp.h>
-#include "fbuffer.h"
-#include "fuser.h"
+#include "fakio.h"
 
 #define MASK_NONE 0
 #define MASK_CLIENT 1
@@ -36,7 +35,5 @@ void context_list_free(context_list_t *list);
 context *context_list_get_empty(context_list_t *list);
 
 void context_list_remove(context_list_t *list, context *c, int mask);
-
-void release_context(context *c);
 
 #endif

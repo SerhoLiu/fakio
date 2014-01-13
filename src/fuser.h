@@ -1,7 +1,7 @@
 #ifndef _FAKIO_USER_H_
 #define _FAKIO_USER_H_
 
-#include "fcommon.h"
+#include "fakio.h"
 
 struct fuser {
     char username[MAX_USERNAME];

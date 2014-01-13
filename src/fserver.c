@@ -1,12 +1,5 @@
-#include <errno.h>
-#include <string.h>
-#include <unistd.h>
 #include <signal.h>
 #include <sys/socket.h>
-#include "flog.h"
-#include "config.h"
-#include "fnet.h"
-#include "fcrypt.h"
 #include "fhandler.h"
 #include "fakio.h"
 

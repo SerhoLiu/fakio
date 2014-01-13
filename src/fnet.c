@@ -1,15 +1,11 @@
 #include "fnet.h"
-#include "flog.h"
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
 int set_nonblocking(int fd)
 {

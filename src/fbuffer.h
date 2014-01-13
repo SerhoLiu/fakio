@@ -1,10 +1,9 @@
 #ifndef _FAKIO_BUFFER_H_
 #define _FAKIO_BUFFER_H_
 
-#include "fcommon.h"
-#include <string.h>
 #include <stdlib.h>
 
+#include "fakio.h"
 
 typedef struct {
     uint8_t buffer[BUFSIZE];

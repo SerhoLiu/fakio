@@ -1,7 +1,7 @@
 #ifndef _FAKIO_NET_H_
 #define _FAKIO_NET_H_
 
-#include "fcommon.h"
+#include "fakio.h"
 
 /* Socks5 define */
 #define SOCKS_VER 0x05

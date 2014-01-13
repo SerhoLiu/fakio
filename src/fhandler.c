@@ -1,11 +1,6 @@
 #include "fhandler.h"
-#include <errno.h>
-#include <unistd.h>
 #include <sys/socket.h>
-#include "flog.h"
-#include "fnet.h"
 #include "fakio.h"
-#include "fcrypt.h"
 
 #define HAND_DATA_SIZE 1024
 
@@ -35,6 +30,9 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
             LOG_WARN("Client %d Can't get context", client_fd);
             close(client_fd);
         }
+        c->client_fd = client_fd;
+        c->loop = loop;
+
         LOG_DEBUG("new client %d comming connection", client_fd);
         create_event(loop, client_fd, EV_RDABLE, &client_handshake_cb, c);
         break;
@@ -55,11 +53,13 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
             if (errno == EAGAIN) {
                 return;    
             }
-            goto done;
+            context_list_remove(c->list, c, MASK_CLIENT);
+            return;
         }
         if (rc == 0) {
             LOG_DEBUG("client %d connection closed", client_fd);
-            goto done;
+            context_list_remove(c->list, c, MASK_CLIENT);
+            return;
         }
 
         if (rc > 0) {
@@ -86,11 +86,13 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     r = fakio_request_resolve(buffer+req.rlen, len, &req, FNET_RESOLVE_NET);
     if (r != 1) {
         LOG_WARN("socks5 request resolve error");
-        goto done;
+        context_list_remove(c->list, c, MASK_CLIENT);
+        return;
     }
     int remote_fd = fnet_create_and_connect(req.addr, req.port, FNET_CONNECT_NONBLOCK);
     if (remote_fd < 0) {
-        goto done;
+        context_list_remove(c->list, c, MASK_CLIENT);
+        return;
     }
 
     if (set_socket_option(remote_fd) < 0) {
@@ -98,9 +100,8 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     }
     
     LOG_DEBUG("client %d remote %d at %p", client_fd, remote_fd, c);
-    c->client_fd = client_fd;
+    
     c->remote_fd = remote_fd;
-    c->loop = loop;
     FBUF_REST(c->req);
     FBUF_REST(c->res);
 
@@ -116,12 +117,6 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);    
     memset(buffer, 0, HAND_DATA_SIZE);
     return;
-
-done:
-    delete_event(loop, client_fd, EV_WRABLE);
-    delete_event(loop, client_fd, EV_RDABLE);
-    close(client_fd);
-    release_context(c);
 }
 
 
