@@ -255,9 +255,8 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
 
     while (1) {
         int need = BUFSIZE - FBUF_DATA_LEN(c->res);
-        printf("need %d\n", need);
         int rc = recv(fd, FBUF_WRITE_AT(c->res), need, 0);
-        printf("remote rc %d\n", rc);
+
         if (rc < 0) {
             if (errno == EAGAIN) {
                 return;
@@ -307,7 +306,7 @@ static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *
              * c->recvlen - rc 中的数据，因此应该将其移到 recv buffer 前面
              */
             FBUF_COMMIT_READ(c->req, rc);
-            printf("FBUF_DATA_LEN(c->req) %d\n", FBUF_DATA_LEN(c->req));
+            
             if (FBUF_DATA_LEN(c->req) <= 0) {
                 delete_event(loop, fd, EV_WRABLE);
                 create_event(loop, c->remote_fd, EV_RDABLE, &remote_readable_cb, c);
@@ -356,13 +355,8 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
 {
     context *c = (context *)evdata;
 
-    //if (FBUF_DATA_LEN(c->req) > 0) {
-    //    delete_event(loop, fd, EV_RDABLE);
-    //    return;
-    //}
-
     int rc = recv(fd, FBUF_WRITE_AT(c->req), 4094, 0);
-    printf("read %d\n", rc);
+
     if (rc < 0) {
         if (errno == EAGAIN) {
                 return;

@@ -1,3 +1,4 @@
+#include "flog.h"
 #include "fcrypt.h"
 #include <unistd.h>
 #include <fcntl.h>
@@ -69,7 +70,7 @@ int fakio_decrypt(context *c, fbuffer *buf)
 {
     uint8_t *buffer = FBUF_DATA_AT(buf);
     EVP_DecryptInit_ex(&c->d_ctx, EVP_aes_128_cfb128(), NULL, c->key, buffer+4096);
-    //EVP_DecryptInit_ex(&c->d_ctx, EVP_aes_128_cfb128(), NULL, c->key, c->key);
+
     int c_len, f_len = 0;
     uint8_t plain[4096];
 
@@ -77,12 +78,13 @@ int fakio_decrypt(context *c, fbuffer *buf)
     EVP_DecryptUpdate(&c->d_ctx, plain, &c_len, buffer, 4096);
     EVP_DecryptFinal_ex(&c->d_ctx, plain+c_len, &f_len);
     
+    //TODO: 大小端
     uint16_t datalen = *(uint16_t *)(plain+4094);
 
-    //FBUF_REST(buf);
     memcpy(FBUF_WRITE_AT(buf), plain, datalen);
     FBUF_DATA_LEN(buf) = datalen;
-
+    LOG_DEBUG("recv from client: %d", FBUF_DATA_LEN(buf));
+    
     return 1;
 }
 
@@ -90,19 +92,15 @@ int fakio_decrypt(context *c, fbuffer *buf)
 int fakio_encrypt(context *c, fbuffer *buf)
 {   
     uint8_t plain[4096];
-    printf("FBUF_DATA_LEN(buf) %d \n", FBUF_DATA_LEN(buf));
+    
+    LOG_DEBUG("recv from remote: %d", FBUF_DATA_LEN(buf));
     memcpy(plain, FBUF_DATA_AT(buf), FBUF_DATA_LEN(buf));
     *(uint16_t *)(plain+4094) = FBUF_DATA_LEN(buf);
-    printf("%d\n", plain[4094]);
-    printf("%d\n", plain[4095]);
 
     random_bytes(FBUF_WRITE_SEEK(buf, 4096), 16);
-    //memcpy(FBUF_WRITE_SEEK(buf, 4096), c->key, 16);
 
     EVP_EncryptInit_ex(&c->e_ctx, EVP_aes_128_cfb128(), NULL,
                        c->key, FBUF_DATA_SEEK(buf, 4096));
-    //EVP_EncryptInit_ex(&c->e_ctx, EVP_aes_128_cfb128(), NULL,
-    //                   c->key, c->key);
 
     int c_len, f_len = 0;
     EVP_EncryptInit_ex(&c->e_ctx, NULL, NULL, NULL, NULL);
@@ -111,6 +109,5 @@ int fakio_encrypt(context *c, fbuffer *buf)
     EVP_EncryptFinal_ex(&c->e_ctx, FBUF_WRITE_AT(buf)+c_len, &f_len);
     FBUF_DATA_LEN(buf) = BUFSIZE;
 
-    printf("encrypted %d\n", c_len+f_len);
     return 1;
 }

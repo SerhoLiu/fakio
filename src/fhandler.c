@@ -7,16 +7,131 @@
 #include "fakio.h"
 #include "fcrypt.h"
 
+#define HAND_DATA_SIZE 1024
 
-void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
+
+void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+{
+    while (1) {
+        int client_fd = accept(fd, NULL, NULL);
+        if (client_fd < 0) {
+            if (errno != EWOULDBLOCK) {
+                LOG_WARN("accept() failed: %s", strerror(errno));
+                break;
+            }
+            continue;
+        }
+        set_nonblocking(client_fd);
+        set_socket_option(client_fd);
+
+        fserver_t *server = evdata;
+        context *c = context_list_get_empty(server->list);
+        if (c == NULL) {
+            LOG_WARN("Client %d Can't get context", client_fd);
+            close(client_fd);
+        }
+        LOG_DEBUG("new client %d comming connection", client_fd);
+        create_event(loop, client_fd, EV_RDABLE, &client_handshake_cb, c);
+        break;
+    }
+}
+
+
+static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+{
+    int r, need, client_fd = fd;
+    context *c = evdata;
+
+    while (1) {
+        need = HAND_DATA_SIZE - FBUF_DATA_LEN(c->req);
+        int rc = recv(client_fd, FBUF_WRITE_AT(c->req), need, 0);
+
+        if (rc < 0) {
+            if (errno == EAGAIN) {
+                return;    
+            }
+            goto done;
+        }
+        if (rc == 0) {
+            LOG_DEBUG("client %d connection closed", client_fd);
+            goto done;
+        }
+
+        if (rc > 0) {
+            FBUF_COMMIT_WRITE(c->req, rc);
+            if (FBUF_DATA_LEN(c->req) < HAND_DATA_SIZE) {
+                continue;
+            }
+            break;
+        }
+    }
+
+    // 用户认证
+    request_t req;
+    fakio_request_resolve(FBUF_DATA_AT(c->req), HAND_DATA_SIZE,
+                          &req, FNET_RESOLVE_USER);
+
+    //TODO: 多用户根据用户名查找 key
+    aes_init(cfg.key, req.IV, &c->e_ctx, &c->d_ctx);
+
+    uint8_t buffer[HAND_DATA_SIZE];
+    int len = aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->req, req.rlen), 
+                          HAND_DATA_SIZE-req.rlen, buffer+req.rlen);
+
+    r = fakio_request_resolve(buffer+req.rlen, len, &req, FNET_RESOLVE_NET);
+    if (r != 1) {
+        LOG_WARN("socks5 request resolve error");
+        goto done;
+    }
+    int remote_fd = fnet_create_and_connect(req.addr, req.port, FNET_CONNECT_NONBLOCK);
+    if (remote_fd < 0) {
+        goto done;
+    }
+
+    if (set_socket_option(remote_fd) < 0) {
+        LOG_WARN("set socket option error");
+    }
+    
+    LOG_DEBUG("client %d remote %d at %p", client_fd, remote_fd, c);
+    c->client_fd = client_fd;
+    c->remote_fd = remote_fd;
+    c->loop = loop;
+    FBUF_REST(c->req);
+    FBUF_REST(c->res);
+
+    random_bytes(buffer, 32);
+    memcpy(c->key, buffer+16, 16);
+    aes_init(cfg.key, buffer, &c->e_ctx, &c->d_ctx);
+    aes_encrypt(&c->e_ctx, c->key, 16, buffer+16);
+
+    //TODO:
+    send(client_fd, buffer, 32, 0);
+
+    delete_event(loop, client_fd, EV_RDABLE);
+    create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);    
+    memset(buffer, 0, HAND_DATA_SIZE);
+    return;
+
+done:
+    delete_event(loop, client_fd, EV_WRABLE);
+    delete_event(loop, client_fd, EV_RDABLE);
+    close(client_fd);
+    release_context(c);
+}
+
+
+static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
 
     while (1) {
         int need = BUFSIZE - FBUF_DATA_LEN(c->req);
-        printf("need %d\n", need);
         int rc = recv(fd, FBUF_WRITE_AT(c->req), need, 0);
-        printf("client rc %d\n", rc);
 
         if (rc < 0) {
             if (errno == EAGAIN) {
@@ -45,7 +160,7 @@ void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
 
 /* client 可写 */
-void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
 
     context *c = (context *)evdata;
@@ -78,40 +193,12 @@ void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 }
 
 
-void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
-{
-    while (1) {
-        int client_fd = accept(fd, NULL, NULL);
-        if (client_fd < 0) {
-            if (errno != EWOULDBLOCK) {
-                LOG_WARN("accept() failed: %s", strerror(errno));
-                break;
-            }
-            continue;
-        }
-        set_nonblocking(client_fd);
-        set_socket_option(client_fd);
-
-        fserver_t *server = evdata;
-        context *c = context_list_get_empty(server->list);
-        if (c == NULL) {
-            LOG_WARN("Client %d Can't get context", client_fd);
-            close(client_fd);
-        }
-        LOG_DEBUG("new client %d comming connection", client_fd);
-        create_event(loop, client_fd, EV_RDABLE, server->handshake, c);
-        break;
-    }
-}
-
-
-void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
-    printf("send to remote\n");
+
     while (1) {
         int rc = send(fd, FBUF_DATA_AT(c->req), FBUF_DATA_LEN(c->req), 0);
-        printf("send to remote %d\n", rc);
         if (rc < 0) {
             if (errno == EAGAIN) {
                 return;
@@ -139,7 +226,7 @@ void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
     }
 }
 
-void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
+static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context *c = (context *)evdata;
     if (FBUF_DATA_LEN(c->res) > 0) {
