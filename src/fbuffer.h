@@ -5,15 +5,15 @@
 
 #include "fakio.h"
 
-typedef struct {
+struct fbuffer {
     uint8_t buffer[BUFSIZE];
     int length;
     int start;
-} fbuffer;
+};
 
 
 #define FBUF_CREATE(B) do {     \
-    (B) = (fbuffer *)malloc(sizeof(fbuffer)); \
+    (B) = (struct fbuffer *)malloc(sizeof(struct fbuffer)); \
     if ((B) != NULL) {                        \
         (B)->length = (B)->start = 0;         \
     }                                          \

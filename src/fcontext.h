@@ -11,8 +11,8 @@ struct context {
     int client_fd;
     int remote_fd;
     
-    fbuffer *req; /* Request buffer */
-    fbuffer *res; /* Response Buffer */
+    fbuffer_t *req; /* Request buffer */
+    fbuffer_t *res; /* Response Buffer */
 
     struct event_loop *loop;
     struct context_node *node;
@@ -23,6 +23,9 @@ struct context {
     fcrypt_ctx e_ctx;
     fcrypt_ctx d_ctx;
 };
+
+
+void context_set_mask(context_t *c, int mask);
 
 context_pool_t *context_pool_create(int maxsize);
 void context_pool_destroy(context_pool_t *pool);

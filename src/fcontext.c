@@ -73,6 +73,11 @@ static context_t *context_create()
     return c;
 }
 
+void context_set_mask(context_t *c, int mask)
+{
+    c->node->mask = mask;
+}
+
 /* 在 context list 头部添加一个节点 */
 static struct context_node *context_pool_add_node(context_pool_t *pool)
 {

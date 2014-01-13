@@ -1,5 +1,4 @@
 #include "fcrypt.h"
-#include <unistd.h>
 #include <fcntl.h>
 #include <openssl/rand.h>
 
@@ -27,7 +26,7 @@ void random_bytes(uint8_t *buffer, size_t blen)
 }
 
 
-int aes_init(uint8_t *key, uint8_t *iv, EVP_CIPHER_CTX *e_ctx, EVP_CIPHER_CTX *d_ctx)
+int aes_init(uint8_t *key, uint8_t *iv, fcrypt_ctx *e_ctx, fcrypt_ctx *d_ctx)
 {
     EVP_CIPHER_CTX_init(e_ctx);
     EVP_EncryptInit_ex(e_ctx, EVP_aes_256_cfb128(), NULL, key, iv);
@@ -37,7 +36,7 @@ int aes_init(uint8_t *key, uint8_t *iv, EVP_CIPHER_CTX *e_ctx, EVP_CIPHER_CTX *d
 }
 
 
-int aes_encrypt(EVP_CIPHER_CTX *e, uint8_t *plain, int len, uint8_t *cipher)
+int aes_encrypt(fcrypt_ctx *e, uint8_t *plain, int len, uint8_t *cipher)
 {
     int c_len, f_len = 0;
     EVP_EncryptInit_ex(e, NULL, NULL, NULL, NULL);
@@ -47,7 +46,7 @@ int aes_encrypt(EVP_CIPHER_CTX *e, uint8_t *plain, int len, uint8_t *cipher)
 }
 
 
-int aes_decrypt(EVP_CIPHER_CTX *e, uint8_t *cipher, int len, uint8_t *plain)
+int aes_decrypt(fcrypt_ctx *e, uint8_t *cipher, int len, uint8_t *plain)
 {
     int p_len = len, f_len = 0;
     EVP_DecryptInit_ex(e, NULL, NULL, NULL, NULL);
@@ -57,7 +56,7 @@ int aes_decrypt(EVP_CIPHER_CTX *e, uint8_t *cipher, int len, uint8_t *plain)
 }
 
 
-int aes_cleanup(EVP_CIPHER_CTX *e_ctx, EVP_CIPHER_CTX *d_ctx)
+int aes_cleanup(fcrypt_ctx *e_ctx, fcrypt_ctx *d_ctx)
 {
     EVP_CIPHER_CTX_cleanup(e_ctx);
     EVP_CIPHER_CTX_cleanup(d_ctx);
@@ -65,7 +64,7 @@ int aes_cleanup(EVP_CIPHER_CTX *e_ctx, EVP_CIPHER_CTX *d_ctx)
 }
 
 
-int fakio_decrypt(context *c, fbuffer *buf)
+int fakio_decrypt(context_t *c, fbuffer_t *buf)
 {
     uint8_t *buffer = FBUF_DATA_AT(buf);
     EVP_DecryptInit_ex(&c->d_ctx, EVP_aes_128_cfb128(), NULL, c->key, buffer+4096);
@@ -88,7 +87,7 @@ int fakio_decrypt(context *c, fbuffer *buf)
 }
 
 
-int fakio_encrypt(context *c, fbuffer *buf)
+int fakio_encrypt(context_t *c, fbuffer_t *buf)
 {   
     uint8_t plain[4096];
     

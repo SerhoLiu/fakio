@@ -7,8 +7,8 @@ ifeq ($(UNAME_S), Linux)
 	CFLAGS += -D USE_EPOLL
 endif
 
-OBJ = src/config.o src/fevent.o src/fnet.o \
-      src/fcrypt.o src/fcontext.o src/fhandler.o
+OBJ = src/config.o src/fnet.o src/fcrypt.o src/fcontext.o \
+      src/fhandler.o src/base/fevent.o
 
 all: fakio-server fakio-local
 
@@ -21,4 +21,4 @@ fakio-client: $(OBJ)
 
 .PHONY: clean
 clean:
-	-rm fakio-server fakio-local src/*.o
+	-rm fakio-server fakio-local src/*.o src/base/*.o

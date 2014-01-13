@@ -8,6 +8,4 @@ struct fuser {
     uint8_t key[16];
 };
 
-typedef struct user fuser_t;
-
 #endif

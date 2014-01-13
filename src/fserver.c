@@ -25,8 +25,8 @@ int main (int argc, char *argv[])
     fserver_t server;
 
     /* 初始化 Context */
-    server.list = context_list_create(100);
-    if (server.list == NULL) {
+    server.pool = context_pool_create(100);
+    if (server.pool == NULL) {
         LOG_ERROR("Start Error!");
     }
 
@@ -54,7 +54,7 @@ int main (int argc, char *argv[])
     LOG_INFO("Fakio Server Event Loop Start, Use %s", get_event_api_name());
     start_event_loop(loop);
     LOG_INFO("I'm Done!");
-    context_list_free(server.list);
+    context_pool_destroy(server.pool);
     delete_event_loop(loop);
     return 0;
 }

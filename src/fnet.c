@@ -165,7 +165,8 @@ int socks5_get_server_reply(const char *ip, const char *port, uint8_t *reply)
     return 10;
 }
 
-int socks5_request_resolve(const unsigned char *buffer, int buflen, request_t *req)
+int socks5_request_resolve(const unsigned char *buffer, int buflen,
+                           frequest_t *req)
 {
     uint16_t ports;
     
@@ -209,7 +210,8 @@ int socks5_request_resolve(const unsigned char *buffer, int buflen, request_t *r
 }
 
 
-int fakio_request_resolve(const uint8_t *buffer, int buflen, request_t *req, int action)
+int fakio_request_resolve(const uint8_t *buffer, int buflen,
+                          frequest_t *req, int action)
 {
     uint16_t ports;
     

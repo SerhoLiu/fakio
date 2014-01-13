@@ -1,14 +1,9 @@
-#include "flog.h"
-#include "fevent.h"
-#include "fnet.h"
-#include "fcrypt.h"
-#include "fcontext.h"
 #include <sys/socket.h>
-#include <errno.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
-#include <unistd.h>
+
+#include "fakio.h"
+#include "base/fevent.h"
 
 #define REPLY_SIZE 12
 #define MAX_PASSWORD 64
@@ -21,7 +16,7 @@ typedef struct {
     char port[6];
 } fclient_t;
 
-static context_list_t *list;
+static context_pool_t *pool;
 static fclient_t client;
 
 void socks5_handshake1_cb(struct event_loop *loop, int fd, int mask, void *evdata);
@@ -102,7 +97,7 @@ void socks5_handshake1_cb(struct event_loop *loop, int fd, int mask, void *evdat
 void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     int rc, client_fd = fd;
-    request_t req;
+    frequest_t req;
     unsigned char buffer[1024];
 
     while (1) {
@@ -141,7 +136,7 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
             send(client_fd, reply, reply_len, 0);
 
             
-            context *c = context_list_get_empty(list);
+            context_t *c = context_pool_get(pool, MASK_CLIENT|MASK_REMOTE);
             if (c == NULL) {
                 LOG_WARN("Can't get context!");
                 close(remote_fd);
@@ -182,7 +177,7 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
 void server_handshake1_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
 
-    context *c = (context *)evdata;
+    context_t *c = evdata;
 
     while (1) {
         int rc = send(fd, FBUF_DATA_AT(c->req), FBUF_DATA_LEN(c->req), 0);
@@ -191,7 +186,7 @@ void server_handshake1_cb(struct event_loop *loop, int fd, int mask, void *evdat
                 return;
             }
             LOG_DEBUG("send() to remote %d failed: %s", fd, strerror(errno));
-            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+            context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
         
@@ -213,7 +208,7 @@ void server_handshake1_cb(struct event_loop *loop, int fd, int mask, void *evdat
 
 void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    context *c = (context *)evdata;
+    context_t *c = evdata;
     
     while (1) {
         int need = 32 - FBUF_DATA_LEN(c->res);
@@ -224,12 +219,12 @@ void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
                 return;
             }
             LOG_DEBUG("recv() from remote %d failed: %s", fd, strerror(errno));
-            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+            context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
         if (rc == 0) {
             LOG_DEBUG("remote %d connection closed", fd);
-            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+            context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
 
@@ -251,7 +246,7 @@ void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
 
 static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    context *c = (context *)evdata;
+    context_t *c = evdata;
 
     while (1) {
         int need = BUFSIZE - FBUF_DATA_LEN(c->res);
@@ -262,12 +257,12 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
                 return;
             }
             LOG_DEBUG("recv() from remote %d failed: %s", fd, strerror(errno));
-            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+            context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
         if (rc == 0) {
             LOG_DEBUG("remote %d connection closed", fd);
-            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+            context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
         FBUF_COMMIT_WRITE(c->res, rc);
@@ -287,7 +282,7 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
 static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
 
-    context *c = (context *)evdata;
+    context_t *c = evdata;
     
     while (1) {
         int rc = send(fd, FBUF_DATA_AT(c->req), FBUF_DATA_LEN(c->req), 0);
@@ -296,7 +291,7 @@ static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *
                 return;
             }
             LOG_DEBUG("send() to remote %d failed: %s", fd, strerror(errno));
-            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+            context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
         
@@ -320,7 +315,7 @@ static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *
 
 static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    context *c = (context *)evdata;
+    context_t *c = evdata;
 
     while (1) {
         int rc = send(fd, FBUF_DATA_AT(c->res), FBUF_DATA_LEN(c->res), 0);
@@ -329,7 +324,7 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
                 return;
             }
             LOG_DEBUG("send() failed to client %d: %s", fd, strerror(errno));
-            context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+            context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
         if (rc >= 0) {
@@ -340,7 +335,7 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
                 
                 /* 如果 client 端已经关闭，则此次请求结束 */
                 if (c->remote_fd == 0) {
-                    context_list_remove(c->list, c, MASK_CLIENT);
+                    context_pool_release(c->pool, c, MASK_CLIENT);
                 } else {
                     create_event(loop, fd, EV_RDABLE, &client_readable_cb, c);
                     create_event(loop, c->remote_fd, EV_RDABLE, &remote_readable_cb, c);
@@ -353,7 +348,7 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
 
 static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
-    context *c = (context *)evdata;
+    context_t *c = evdata;
 
     int rc = recv(fd, FBUF_WRITE_AT(c->req), 4094, 0);
 
@@ -362,12 +357,12 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
                 return;
         }
         LOG_DEBUG("recv() failed form client %d: %s", fd, strerror(errno));
-        context_list_remove(c->list, c, MASK_CLIENT|MASK_REMOTE);
+        context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
         return;
     }
     if (rc == 0) {
         LOG_DEBUG("client %d Connection closed", fd);
-        context_list_remove(c->list, c, MASK_REMOTE|MASK_CLIENT);
+        context_pool_release(c->pool, c, MASK_REMOTE|MASK_CLIENT);
         return;
     }
 
@@ -397,8 +392,8 @@ int main (int argc, char *argv[])
 
 
     /* 初始化 Context */
-    list = context_list_create(100);
-    if (list == NULL) {
+    pool = context_pool_create(100);
+    if (pool == NULL) {
         LOG_ERROR("Start Error!");
     }
     
