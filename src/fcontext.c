@@ -1,60 +1,59 @@
 #include "fcontext.h"
 #include <stdlib.h>
+#include "base/fevent.h"
 
 #define MIN_MAXSIZE 16
 
 struct context_node {
     int mask;
-    context *c;
+    context_t *c;
     struct context_node *next, *prev;
 };
 
-typedef struct context_node context_node_t;
-
-struct context_list {
+struct context_pool {
     int max_size;
     int current_size;
     int used_size;
 
-    context_node_t *head;
+    struct context_node *head;
 };
 
 
-context_list_t *context_list_create(int maxsize)
+context_pool_t *context_pool_create(int maxsize)
 {
     if (maxsize < MIN_MAXSIZE) {
         maxsize = MIN_MAXSIZE;
     }
-    context_list_t *list = (context_list_t *)malloc(sizeof(*list));
-    if (list == NULL) return NULL;
+    context_pool_t *pool = (context_pool_t *)malloc(sizeof(*pool));
+    if (pool == NULL) return NULL;
 
-    list->max_size = maxsize;
-    list->used_size = list->current_size = 0;
+    pool->max_size = maxsize;
+    pool->used_size = pool->current_size = 0;
     
-    list->head = NULL;
+    pool->head = NULL;
 
-    return list;
+    return pool;
 }
 
-void context_list_free(context_list_t *list)
+void context_pool_destroy(context_pool_t *pool)
 {
-    if (list == NULL) return;
-    context_node_t *current, *next;
+    if (pool == NULL) return;
+    struct context_node *current, *next;
     
-    int len = list->current_size;
-    current = list->head;
+    int len = pool->current_size;
+    current = pool->head;
     while (len--) {
         next = current->next;
         free(current);
         current = next;
     }
 
-    free(list);
+    free(pool);
 }
 
-static context *context_create()
+static context_t *context_create()
 {
-    context *c = (context *)malloc(sizeof(*c));
+    context_t *c = (context_t *)malloc(sizeof(*c));
     if (c == NULL) return NULL;
 
     c->req = c->res = NULL;
@@ -71,15 +70,14 @@ static context *context_create()
     }
     
     c->user = NULL;
-    //c->d_ctx = c->e_ctx = NULL;
     return c;
 }
 
 /* 在 context list 头部添加一个节点 */
-static context_node_t *context_list_add_node(context_list_t *list)
+static struct context_node *context_pool_add_node(context_pool_t *pool)
 {
-    context_node_t *node;
-    node = (context_node_t *)malloc(sizeof(*node));
+    struct context_node *node;
+    node = (struct context_node *)malloc(sizeof(*node));
     if (node == NULL) return NULL;
 
     node->c = context_create();
@@ -88,51 +86,51 @@ static context_node_t *context_list_add_node(context_list_t *list)
         return NULL;
     }
     node->c->node = node;
-    node->c->list = list;
+    node->c->pool = pool;
 
     // 将 node 插入 used list 头部
-    if (list->current_size == 0) {
-        list->head = node;
+    if (pool->current_size == 0) {
+        pool->head = node;
         node->prev = node->next = NULL;
     } else {
         node->prev = NULL;
-        node->next = list->head;
-        list->head->prev = node;
-        list->head = node;
+        node->next = pool->head;
+        pool->head->prev = node;
+        pool->head = node;
     }
 
-    list->current_size++;
+    pool->current_size++;
     return node;
 }
 
-context *context_list_get_empty(context_list_t *list)
+context_t *context_pool_get(context_pool_t *pool, int mask)
 {
-    if (list == NULL) return NULL;
+    if (pool == NULL) return NULL;
 
     LOG_DEBUG("Context size=%d current=%d used=%d",
-        list->max_size, list->current_size, list->used_size);
+        pool->max_size, pool->current_size, pool->used_size);
 
-    context_node_t *node;
+    struct context_node *node;
     
-    if (list->used_size < list->current_size) {
-        node = list->head;
-        int len = list->current_size;
+    if (pool->used_size < pool->current_size) {
+        node = pool->head;
+        int len = pool->current_size;
         while (len--) {
             if (node->mask == MASK_NONE) {
-                node->mask = (MASK_CLIENT | MASK_REMOTE);
-                list->used_size++;
+                node->mask = mask;
+                pool->used_size++;
                 return node->c;
             }
             node = node->next;
         }
     }
 
-    if (list->used_size == list->current_size) {
-        if (list->current_size < list->max_size) {
-            node = context_list_add_node(list);
+    if (pool->used_size == pool->current_size) {
+        if (pool->current_size < pool->max_size) {
+            node = context_pool_add_node(pool);
             if (node == NULL) return NULL;
-            node->mask = (MASK_CLIENT | MASK_REMOTE);
-            list->used_size++;
+            node->mask = mask;
+            pool->used_size++;
             return node->c;
         }
     }
@@ -141,7 +139,7 @@ context *context_list_get_empty(context_list_t *list)
 }
 
 
-static void delete_and_close_fd(context *c, int fd)
+static inline void delete_and_close_fd(context_t *c, int fd)
 {   
     LOG_DEBUG("delete event context %p fd %d", c, fd);
     if (fd != 0) {
@@ -152,11 +150,11 @@ static void delete_and_close_fd(context *c, int fd)
 }
 
 
-void context_list_remove(context_list_t *list, context *c, int mask)
+void context_pool_release(context_pool_t *pool, context_t *c, int mask)
 {
     LOG_INFO("Context Remove");
-    if (list == NULL || c == NULL || mask == MASK_NONE) return;
-    context_node_t *node = c->node;
+    if (pool == NULL || c == NULL || mask == MASK_NONE) return;
+    struct context_node *node = c->node;
 
     int rmask = node->mask & mask;
     
@@ -177,16 +175,16 @@ void context_list_remove(context_list_t *list, context *c, int mask)
         FBUF_REST(node->c->req);
         FBUF_REST(node->c->res);
 
-        if (node != list->head) {
+        if (node != pool->head) {
             node->prev->next = node->next;
             if (node->next != NULL) {
                 node->next->prev = node->prev;
             }
             node->prev = NULL;
-            node->next = list->head;
-            list->head->prev = node;
-            list->head = node;
+            node->next = pool->head;
+            pool->head->prev = node;
+            pool->head = node;
         }
-        list->used_size--;
+        pool->used_size--;
     }
 }

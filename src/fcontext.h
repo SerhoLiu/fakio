@@ -1,15 +1,13 @@
 #ifndef _FAKIO_CONTEXT_H_
 #define _FAKIO_CONTEXT_H_
 
-#include <openssl/evp.h>
 #include "fakio.h"
 
 #define MASK_NONE 0
 #define MASK_CLIENT 1
 #define MASK_REMOTE 2
 
-
-typedef struct {
+struct context {
     int client_fd;
     int remote_fd;
     
@@ -18,22 +16,20 @@ typedef struct {
 
     struct event_loop *loop;
     struct context_node *node;
-    struct context_list *list;
+    struct context_pool *pool;
 
     fuser_t *user;
     uint8_t key[32];
-    EVP_CIPHER_CTX e_ctx;
-    EVP_CIPHER_CTX d_ctx;
-} context;
+    fcrypt_ctx e_ctx;
+    fcrypt_ctx d_ctx;
+};
 
-typedef struct context_list context_list_t;
+context_pool_t *context_pool_create(int maxsize);
+void context_pool_destroy(context_pool_t *pool);
 
-context_list_t *context_list_create(int maxsize);
+context_t *context_pool_get(context_pool_t *pool, int mask);
+void context_pool_release(context_pool_t *pool, context_t *c, int mask);
 
-void context_list_free(context_list_t *list);
 
-context *context_list_get_empty(context_list_t *list);
-
-void context_list_remove(context_list_t *list, context *c, int mask);
 
 #endif
