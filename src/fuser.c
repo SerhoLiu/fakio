@@ -25,6 +25,8 @@ int fuser_add_user(hashmap *users, const char *name, const char *password)
     if (users == NULL || name == NULL || password == NULL) return 0;
 
     size_t nlen = strlen(name);
+    if (nlen > MAX_USERNAME) return 0;
+    
     size_t plen = strlen(password);
 
     if (nlen == 0 || plen == 0) return 0;
