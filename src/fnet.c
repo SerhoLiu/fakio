@@ -228,6 +228,7 @@ int fakio_request_resolve(const uint8_t *buffer, int buflen,
         uint8_t name_len = buffer[16];
         memcpy(req->username, buffer+16+1, name_len);
         req->username[name_len] = '\0';
+        req->name_len = name_len;
         req->rlen = 16 + 1 + name_len;
         return 1;
     }

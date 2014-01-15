@@ -32,6 +32,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         }
         c->client_fd = client_fd;
         c->loop = loop;
+        c->server = server;
 
         LOG_DEBUG("new client %d comming connection", client_fd);
         create_event(loop, client_fd, EV_RDABLE, &client_handshake_cb, c);
@@ -77,7 +78,13 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
                           &req, FNET_RESOLVE_USER);
 
     //TODO: 多用户根据用户名查找 key
-    aes_init(cfg.key, req.IV, &c->e_ctx, &c->d_ctx);
+    c->user = fuser_find_user(c->server->users, req.username, req.name_len);
+    if (c->user == NULL) {
+        LOG_WARN("user: %s Not Found!", req.username);
+        context_pool_release(c->pool, c, MASK_CLIENT);
+        return;
+    }
+    aes_init(c->user->key, req.IV, &c->e_ctx, &c->d_ctx);
 
     uint8_t buffer[HAND_DATA_SIZE];
     int len = aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->req, req.rlen), 
@@ -108,7 +115,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
 
     random_bytes(buffer, 32);
     memcpy(c->key, buffer+16, 16);
-    aes_init(cfg.key, buffer, &c->e_ctx, &c->d_ctx);
+    aes_init(c->user->key, buffer, &c->e_ctx, &c->d_ctx);
     aes_encrypt(&c->e_ctx, c->key, 16, buffer+16);
 
     //TODO:

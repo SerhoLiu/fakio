@@ -24,7 +24,8 @@
 
 struct frequest {
     uint8_t IV[16];
-    char username[MAX_USERNAME];
+    uint8_t username[MAX_USERNAME];
+    int name_len;
     char addr[MAX_ADDR_LEN];
     char port[8];
     int rlen;

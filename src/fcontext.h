@@ -14,6 +14,7 @@ struct context {
     fbuffer_t *req; /* Request buffer */
     fbuffer_t *res; /* Response Buffer */
 
+    struct fserver *server;
     struct event_loop *loop;
     struct context_node *node;
     struct context_pool *pool;
