@@ -4,7 +4,8 @@
 #include "fakio.h"
 
 struct fuser {
-    char username[MAX_USERNAME];
+    uint8_t username[MAX_USERNAME];
+    int name_len;
     uint8_t key[16];
 };
 
