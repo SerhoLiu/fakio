@@ -11,7 +11,11 @@ int main (int argc, char *argv[])
     }
 
     fserver_t server;
-
+    server.users = fuser_userdict_create(4);
+    if (server.users == NULL) {
+        LOG_ERROR("Start Error!");
+    }
+    
     //config cfg;
     load_config_file(argv[1], &server);
 
