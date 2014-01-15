@@ -3,6 +3,8 @@
 #include <time.h>
 
 #include "fakio.h"
+#include "base/ini.h"
+#include "base/sha2.h"
 #include "base/fevent.h"
 
 #define REPLY_SIZE 12
@@ -13,7 +15,12 @@ typedef struct {
     uint8_t username[MAX_USERNAME];
     uint8_t name_len;
     uint8_t key[32];
-    char port[6];
+    
+    char chost[MAX_HOST_LEN];
+    char cport[MAX_PORT_LEN];
+
+    char shost[MAX_HOST_LEN];
+    char sport[MAX_PORT_LEN];
 } fclient_t;
 
 static context_pool_t *pool;
@@ -117,8 +124,8 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
 
         // Socks5 认证协议，采用 050100，这里不管发起方使用何种协议
         if (buffer[0] == SOCKS_VER) {
-            int remote_fd = fnet_create_and_connect("127.0.0.1", "8888",
-                                        FNET_CONNECT_BLOCK);
+            int remote_fd = fnet_create_and_connect(client.shost,
+                            client.sport, FNET_CONNECT_BLOCK);
             if (remote_fd < 0) {
                 LOG_WARN("Server don't onnection");
                 break;
@@ -131,7 +138,8 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
 
             //Reply SOCKS5
             uint8_t reply[16];
-            int reply_len = socks5_get_server_reply("0.0.0.0", "8888", reply);
+            int reply_len = socks5_get_server_reply(client.chost,
+                                client.cport, reply);
             //TODO:
             send(client_fd, reply, reply_len, 0);
 
@@ -372,24 +380,80 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
 }
 
+static int config_handler(void* user, const char* section, const char* name,
+                   const char* value)
+{
+    fclient_t *client = user;
+
+    LOG_DEBUG("load conf: %s %s %s", section, name, value);
+
+    if (strcmp("server", section) == 0) {
+        if (strcmp("host", name) == 0) {
+            strcpy(client->shost, value);
+        } else if (strcmp("port", name) == 0) {
+            strcpy(client->sport, value);
+        } else {
+            return 0;
+        }
+        return 1;
+    }
+
+    if (strcmp("client", section) == 0) {
+        if (strcmp("host", name) == 0) {
+            strcpy(client->chost, value);
+        } else if (strcmp("port", name) == 0) {
+            strcpy(client->cport, value);
+        } else {
+            return 0;
+        }
+        return 1;
+    }
+
+    if (strcmp("user", section) == 0) {
+        if (strcmp("name", name) == 0) {
+            size_t nlen = strlen(value);
+            if (nlen > MAX_USERNAME) {
+                LOG_ERROR("User Name too long, must %d!", MAX_USERNAME);
+            }
+            int i;
+            for (i = 0; i < nlen; i++) {
+                client->username[i] = value[i];
+            }
+            client->name_len = nlen;
+        } else if (strcmp("password", name) == 0) {
+            size_t plen = strlen(value);
+            sha2((uint8_t *)value, plen, client->key, 0);
+        } else {
+            return 0;
+        }
+        return 1;
+    }
+
+    return 0;
+}
+
+static void client_load_config_file(const char *filename, fclient_t *client)
+{
+    FILE *f = fopen(filename, "rb");
+    if (f == NULL) {
+        LOG_ERROR("Can't load config file: %s", filename);
+    }
+
+    if (ini_parse_file(f, &config_handler, client) < 0) {
+        LOG_ERROR("Can't load config file: %s", filename);
+    }
+
+    fclose(f);
+}
+
 
 int main (int argc, char *argv[])
 {
-    // For test
-    uint8_t name[] = {'S', 'E', 'r', 'H', 'o'};
-    memcpy(client.username, name, 5);
-    client.name_len = 5;
-
-    char keystr[33];
-    strcpy(keystr, "098f6bcd(621d373cade4e832627b4f6");
-    
-    int i;
-    for (i = 0; i < 32; i++) {
-        client.key[i] = keystr[i];
+    if (argc != 2) {
+        LOG_ERROR("Usage: %s --config_path\n", argv[0]);
     }
 
-    strcpy(client.port, "1070");
-
+    client_load_config_file(argv[1], &client);
 
     /* 初始化 Context */
     pool = context_pool_create(100);
@@ -404,7 +468,7 @@ int main (int argc, char *argv[])
     }
     
     /* NULL is 0.0.0.0 */
-    int listen_sd = fnet_create_and_bind(NULL, client.port);
+    int listen_sd = fnet_create_and_bind(client.chost, client.cport);
     if (listen_sd < 0)  {
        LOG_ERROR("socket() failed");
     }
@@ -414,8 +478,8 @@ int main (int argc, char *argv[])
     }
 
     create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, NULL);
-    LOG_INFO("Fakio Local Start...... Binding in 0.0.0.0:%s", client.port);
-    LOG_INFO("Fakio Local Event Loop Start, Use %s", get_event_api_name());
+    LOG_INFO("Fakio client start... binding in %s:%s", client.chost, client.cport);
+    LOG_INFO("Fakio client event loop start, use %s", get_event_api_name());
     start_event_loop(loop);
 
     //context_list_free(list);

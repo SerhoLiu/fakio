@@ -17,10 +17,10 @@ all: fakio-server fakio-client
 fakio-server: $(ALL_OBJ)
 	$(CC) $(CFLAGS) -o $@  $(ALL_OBJ) src/fserver.c  $(LIBS)
 
-fakio-client: $(OBJ)
-	$(CC) $(CFLAGS) -I ./src -o $@ clients/fclient.c $(OBJ) -lcrypto
+fakio-client: $(ALL_OBJ)
+	$(CC) $(CFLAGS) -I ./src -o $@ $(ALL_OBJ) clients/fclient.c $(LIBS)
 
 
 .PHONY: clean
 clean:
-	-rm fakio-server fakio-local src/*.o src/base/*.o
+	-rm fakio-server fakio-client src/*.o src/base/*.o
