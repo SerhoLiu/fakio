@@ -1,111 +1,147 @@
 #include "fcrypt.h"
 #include <fcntl.h>
-#include <openssl/rand.h>
 
 
-void random_bytes(uint8_t *buffer, size_t blen)
+void random_bytes(uint8_t *bytes, size_t len)
 {
-    int fd, rc, len;
+    int fd, rc, rlen;
 
-    len = 0;
+    rlen = 0;
     fd = open("/dev/urandom", O_RDONLY);
     if (fd > 0) {
-        while (len < blen) {
-            rc = read(fd, buffer+len, blen-len);
+        while (rlen < len) {
+            rc = read(fd, bytes+rlen, len-rlen);
             if (rc < 0) {
                 break;
             }
-            len += rc;
+            rlen += rc;
         }
         close(fd);    
     }
     
-    if (len < blen) {
-        RAND_bytes(buffer, blen);
-    }
+    //if (rlen < len) {
+    //    RAND_bytes(buffer, blen);
+    //}
 }
 
 
-int aes_init(uint8_t *key, uint8_t *iv, fcrypt_ctx *e_ctx, fcrypt_ctx *d_ctx)
+int fcrypt_set_key(fcrypt_ctx_t *ctx, uint8_t *key, size_t keysize)
 {
-    EVP_CIPHER_CTX_init(e_ctx);
-    EVP_EncryptInit_ex(e_ctx, EVP_aes_256_cfb128(), NULL, key, iv);
-    EVP_CIPHER_CTX_init(d_ctx);
-    EVP_DecryptInit_ex(d_ctx, EVP_aes_256_cfb128(), NULL, key, iv);
-    return 0;
-}
-
-
-int aes_encrypt(fcrypt_ctx *e, uint8_t *plain, int len, uint8_t *cipher)
-{
-    int c_len, f_len = 0;
-    EVP_EncryptInit_ex(e, NULL, NULL, NULL, NULL);
-    EVP_EncryptUpdate(e, cipher, &c_len, plain, len);
-    EVP_EncryptFinal_ex(e, cipher+c_len, &f_len);
-    return c_len + f_len;
-}
-
-
-int aes_decrypt(fcrypt_ctx *e, uint8_t *cipher, int len, uint8_t *plain)
-{
-    int p_len = len, f_len = 0;
-    EVP_DecryptInit_ex(e, NULL, NULL, NULL, NULL);
-    EVP_DecryptUpdate(e, plain, &p_len, cipher, len);
-    EVP_DecryptFinal_ex(e, plain+p_len, &f_len);
-    return p_len + f_len;
-}
-
-
-int aes_cleanup(fcrypt_ctx *e_ctx, fcrypt_ctx *d_ctx)
-{
-    EVP_CIPHER_CTX_cleanup(e_ctx);
-    EVP_CIPHER_CTX_cleanup(d_ctx);
+    if (ctx == NULL || key == NULL) return 0;
+    if (keysize != 128 && keysize != 192 && keysize != 256) return 0;
+    
+    aes_setkey_enc(&ctx->aes, key, keysize);
+    //aes_setkey_dec(&ctx->d_ctx, key, keysize);
     return 1;
 }
 
 
-int fakio_decrypt(context_t *c, fbuffer_t *buf)
-{
-    uint8_t *buffer = FBUF_DATA_AT(buf);
-    EVP_DecryptInit_ex(&c->d_ctx, EVP_aes_128_cfb128(), NULL, c->key, buffer+4096);
-
-    int c_len, f_len = 0;
-    uint8_t plain[4096];
-
-    EVP_DecryptInit_ex(&c->d_ctx, NULL, NULL, NULL, NULL);
-    EVP_DecryptUpdate(&c->d_ctx, plain, &c_len, buffer, 4096);
-    EVP_DecryptFinal_ex(&c->d_ctx, plain+c_len, &f_len);
-    
-    //TODO: 大小端
-    uint16_t datalen = *(uint16_t *)(plain+4094);
-
-    memcpy(FBUF_WRITE_AT(buf), plain, datalen);
-    FBUF_DATA_LEN(buf) = datalen;
-    LOG_DEBUG("recv from client: %d", FBUF_DATA_LEN(buf));
-    
-    return 1;
-}
-
-
-int fakio_encrypt(context_t *c, fbuffer_t *buf)
+int fcrypt_encrypt_all(fcrypt_ctx_t *ctx,
+                       size_t length,
+                       uint8_t iv[16],
+                       const uint8_t *input,
+                       uint8_t *output ) 
 {   
-    uint8_t plain[4096];
+
+    size_t off = 0;
     
-    LOG_DEBUG("recv from remote: %d", FBUF_DATA_LEN(buf));
-    memcpy(plain, FBUF_DATA_AT(buf), FBUF_DATA_LEN(buf));
-    *(uint16_t *)(plain+4094) = FBUF_DATA_LEN(buf);
+    return aes_crypt_cfb128(&ctx->aes, AES_ENCRYPT, length, &off, iv, input, output);
 
-    random_bytes(FBUF_WRITE_SEEK(buf, 4096), 16);
+}
 
-    EVP_EncryptInit_ex(&c->e_ctx, EVP_aes_128_cfb128(), NULL,
-                       c->key, FBUF_DATA_SEEK(buf, 4096));
 
-    int c_len, f_len = 0;
-    EVP_EncryptInit_ex(&c->e_ctx, NULL, NULL, NULL, NULL);
+int fcrypt_decrypt_all(fcrypt_ctx_t *ctx,
+                       size_t length,
+                       uint8_t iv[16],
+                       const uint8_t *input,
+                       uint8_t *output ) 
+{
+    size_t off = 0;
+    
+    return aes_crypt_cfb128(&ctx->aes, AES_DECRYPT, length, &off, iv, input, output);
+}
 
-    EVP_EncryptUpdate(&c->e_ctx, FBUF_WRITE_AT(buf), &c_len, plain, 4096);
-    EVP_EncryptFinal_ex(&c->e_ctx, FBUF_WRITE_AT(buf)+c_len, &f_len);
-    FBUF_DATA_LEN(buf) = BUFSIZE;
 
+int fcrypt_ctx_init(fcrypt_ctx_t *ctx, uint8_t bytes[48], int c)
+{   
+    if (c) {
+        memcpy(ctx->e_iv, bytes, 16);
+        memcpy(ctx->d_iv, bytes+16, 16);
+    } else {
+        memcpy(ctx->d_iv, bytes, 16);
+        memcpy(ctx->e_iv, bytes+16, 16);
+    }
+    
+    
+    memcpy(ctx->key, bytes+32, 16);
+
+    ctx->e_pos = ctx->d_pos = 0;
+    return fcrypt_set_key(ctx, ctx->key, 128);
+}
+
+
+int fcrypt_encrypt(fcrypt_ctx_t *ctx, fbuffer_t *buffer)
+{
+    printf("enc datalen %d\n", FBUF_DATA_LEN(buffer));
+
+    int i;
+    printf("key:\n");
+    for (i = 0; i < 16; i++)
+        printf("%d ", ctx->key[i]);
+    printf("\n");
+
+    printf("iv:\n");
+    for (i = 0; i < 16; i++)
+        printf("%d ", ctx->e_iv[i]);
+    printf("\n");
+
+    uint8_t *data = FBUF_DATA_AT(buffer);
+    printf("data:\n");
+    for (i = 0; i < 16; i++)
+        printf("%d ", data[i]);
+    printf("\n");
+
+    aes_crypt_cfb128(&ctx->aes, AES_ENCRYPT, FBUF_DATA_LEN(buffer),
+                     &ctx->e_pos, ctx->e_iv,
+                     FBUF_DATA_AT(buffer), FBUF_DATA_AT(buffer));
+
+    printf("palin:\n");
+    for (i = 0; i < 16; i++)
+        printf("%d ", data[i]);
+    printf("\n");
+
+    return 1;
+}
+
+
+int fcrypt_decrypt(fcrypt_ctx_t *ctx, fbuffer_t *buffer)
+{   
+    printf("dec datalen %d\n", FBUF_DATA_LEN(buffer));
+
+    int i;
+    printf("key:\n");
+    for (i = 0; i < 16; i++)
+        printf("%d ", ctx->key[i]);
+    printf("\n");
+
+    printf("iv:\n");
+    for (i = 0; i < 16; i++)
+        printf("%d ", ctx->d_iv[i]);
+    printf("\n");
+
+    uint8_t *data = FBUF_DATA_AT(buffer);
+    printf("plain:\n");
+    for (i = 0; i < 16; i++)
+        printf("%d ", data[i]);
+    printf("\n");
+
+    aes_crypt_cfb128(&ctx->aes, AES_DECRYPT, FBUF_DATA_LEN(buffer),
+                     &ctx->d_pos, ctx->d_iv,
+                     FBUF_DATA_AT(buffer), FBUF_DATA_AT(buffer));
+
+    printf("data:\n");
+    for (i = 0; i < 16; i++)
+        printf("%d ", data[i]);
+    printf("\n");
     return 1;
 }
