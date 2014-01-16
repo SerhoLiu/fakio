@@ -159,13 +159,21 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
 
             random_bytes(FBUF_WRITE_AT(c->req), 16);
 
+
             *FBUF_WRITE_SEEK(c->req, 16) = client.name_len;
             memcpy(FBUF_WRITE_SEEK(c->req, 17), client.username, client.name_len);
-            aes_init(client.key, FBUF_DATA_SEEK(c->req, 0), &c->e_ctx, &c->d_ctx);
+            
+            fcrypt_set_key(c->crypto, client.key, 256);
+
             buffer[2] = SOCKS_VER;
             int c_len = 1024 - 16 - 1 - client.name_len;
 
-            aes_encrypt(&c->e_ctx, buffer+2, c_len, FBUF_WRITE_SEEK(c->req, 16+1+client.name_len));
+            uint8_t iv[16];
+            memcpy(iv, FBUF_DATA_SEEK(c->req, 0), 16);
+            
+            fcrypt_encrypt_all(c->crypto, c_len, iv, buffer+2,
+                               FBUF_WRITE_SEEK(c->req, 16+1+client.name_len));
+
             FBUF_COMMIT_WRITE(c->req, HAND_DATA_SIZE);
 
             delete_event(loop, client_fd, EV_RDABLE);
@@ -219,7 +227,7 @@ void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
     context_t *c = evdata;
     
     while (1) {
-        int need = 32 - FBUF_DATA_LEN(c->res);
+        int need = 64 - FBUF_DATA_LEN(c->res);
         int rc = recv(fd, FBUF_WRITE_AT(c->res), need, 0);
         
         if (rc < 0) {
@@ -237,15 +245,19 @@ void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
         }
 
         FBUF_COMMIT_WRITE(c->res, rc);
-        if (FBUF_DATA_LEN(c->res) < 32) {
+        if (FBUF_DATA_LEN(c->res) < 64) {
             continue;
         }
         break;
     }
     
 
-    aes_init(client.key, FBUF_DATA_AT(c->res), &c->e_ctx, &c->d_ctx);
-    aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->res, 16), 16, c->key);
+    //aes_init(client.key, FBUF_DATA_AT(c->res), &c->e_ctx, &c->d_ctx);
+    //aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->res, 16), 16, c->key);
+    uint8_t bytes[48];
+    fcrypt_decrypt_all(c->crypto, 48, FBUF_DATA_AT(c->res),
+                       FBUF_DATA_SEEK(c->res, 16), bytes);
+    fcrypt_ctx_init(c->crypto, bytes, 1);
     FBUF_REST(c->res);
 
     delete_event(loop, fd, EV_RDABLE);
@@ -257,8 +269,7 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
     context_t *c = evdata;
 
     while (1) {
-        int need = BUFSIZE - FBUF_DATA_LEN(c->res);
-        int rc = recv(fd, FBUF_WRITE_AT(c->res), need, 0);
+        int rc = recv(fd, FBUF_WRITE_AT(c->res), BUFSIZE, 0);
 
         if (rc < 0) {
             if (errno == EAGAIN) {
@@ -274,13 +285,11 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
             return;
         }
         FBUF_COMMIT_WRITE(c->res, rc);
-        if (FBUF_DATA_LEN(c->res) < BUFSIZE) {
-            continue;
-        }
+        
         break;
     }
-    fakio_decrypt(c, c->res);
-
+    //fakio_decrypt(c, c->res);
+    fcrypt_decrypt(c->crypto, c->res);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
 }
@@ -357,8 +366,8 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
 static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context_t *c = evdata;
-
-    int rc = recv(fd, FBUF_WRITE_AT(c->req), 4094, 0);
+    printf("hhhhh\n");
+    int rc = recv(fd, FBUF_WRITE_AT(c->req), BUFSIZE, 0);
 
     if (rc < 0) {
         if (errno == EAGAIN) {
@@ -375,7 +384,8 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
     }
 
     FBUF_COMMIT_WRITE(c->req, rc);
-    fakio_encrypt(c, c->req);
+    //fakio_encrypt(c, c->req);
+    fcrypt_encrypt(c->crypto, c->req);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
 }

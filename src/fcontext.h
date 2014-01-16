@@ -20,9 +20,7 @@ struct context {
     struct context_pool *pool;
 
     fuser_t *user;
-    uint8_t key[32];
-    fcrypt_ctx e_ctx;
-    fcrypt_ctx d_ctx;
+    fcrypt_ctx_t *crypto;
 };
 
 

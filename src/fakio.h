@@ -6,10 +6,9 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-#include <openssl/evp.h>
 #include "base/hashmap.h"
 
-typedef EVP_CIPHER_CTX fcrypt_ctx;
+typedef struct fcrypt_ctx fcrypt_ctx_t;
 typedef struct fserver fserver_t;
 typedef struct fbuffer fbuffer_t;
 typedef struct frequest frequest_t;

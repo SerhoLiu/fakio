@@ -69,7 +69,15 @@ static context_t *context_create()
         return NULL;
     }
     
+    c->crypto = malloc(sizeof(struct fcrypt_ctx));
+    if (c->crypto == NULL) {
+        free(c->req);
+        free(c->res);
+        free(c);
+        return NULL;
+    }
     c->user = NULL;
+
     return c;
 }
 
