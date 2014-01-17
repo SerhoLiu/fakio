@@ -35,6 +35,15 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
 static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 
+static inline int client_fcrypt_ctx_init(fcrypt_ctx_t *ctx, uint8_t bytes[48])
+{   
+    memcpy(ctx->e_iv, bytes, 16);
+    memcpy(ctx->d_iv, bytes+16, 16);
+    memcpy(ctx->key, bytes+32, 16);
+
+    ctx->e_pos = ctx->d_pos = 0;
+    return fcrypt_set_key(ctx, ctx->key, 128);
+}
 
 static void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
@@ -171,7 +180,7 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
             uint8_t iv[16];
             memcpy(iv, FBUF_DATA_SEEK(c->req, 0), 16);
             
-            fcrypt_encrypt_all(c->crypto, c_len, iv, buffer+2,
+            fcrypt_encrypt_all(c->crypto, iv, c_len, buffer+2,
                                FBUF_WRITE_SEEK(c->req, 16+1+client.name_len));
 
             FBUF_COMMIT_WRITE(c->req, HAND_DATA_SIZE);
@@ -255,9 +264,9 @@ void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
     //aes_init(client.key, FBUF_DATA_AT(c->res), &c->e_ctx, &c->d_ctx);
     //aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->res, 16), 16, c->key);
     uint8_t bytes[48];
-    fcrypt_decrypt_all(c->crypto, 48, FBUF_DATA_AT(c->res),
+    fcrypt_decrypt_all(c->crypto, FBUF_DATA_AT(c->res), 48, 
                        FBUF_DATA_SEEK(c->res, 16), bytes);
-    fcrypt_ctx_init(c->crypto, bytes, 1);
+    client_fcrypt_ctx_init(c->crypto, bytes);
     FBUF_REST(c->res);
 
     delete_event(loop, fd, EV_RDABLE);
@@ -366,7 +375,6 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
 static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     context_t *c = evdata;
-    printf("hhhhh\n");
     int rc = recv(fd, FBUF_WRITE_AT(c->req), BUFSIZE, 0);
 
     if (rc < 0) {

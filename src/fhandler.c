@@ -90,7 +90,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     uint8_t buffer[HAND_DATA_SIZE];
     //int len = aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->req, req.rlen), 
     //                      HAND_DATA_SIZE-req.rlen, buffer+req.rlen);
-    fcrypt_decrypt_all(c->crypto, HAND_DATA_SIZE-req.rlen, req.IV,
+    fcrypt_decrypt_all(c->crypto, req.IV, HAND_DATA_SIZE-req.rlen,
                        FBUF_DATA_SEEK(c->req, req.rlen), buffer+req.rlen);
 
     r = fakio_request_resolve(buffer+req.rlen, HAND_DATA_SIZE-req.rlen,
@@ -120,12 +120,12 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     random_bytes(buffer, 64);
     uint8_t bytes[64];
     memcpy(bytes, buffer, 64);
-    fcrypt_encrypt_all(c->crypto, 48, bytes, buffer+16, buffer+16);
+    fcrypt_encrypt_all(c->crypto, bytes, 48, buffer+16, buffer+16);
 
     //TODO:
     send(client_fd, buffer, 64, 0);
 
-    fcrypt_ctx_init(c->crypto, bytes+16, 0);
+    fcrypt_ctx_init(c->crypto, bytes+16);
 
     delete_event(loop, client_fd, EV_RDABLE);
     create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);    
