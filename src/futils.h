@@ -11,9 +11,9 @@ void fakio_log(int level, const char *fmt, ...);
 
 /* for debug */
 #ifdef NDEBUG
-  #define LOG_FOR_DEBUG(F, A) (void)0
+  #define LOG_FOR_DEBUG(F, ...) (void)0
 #else
-  #define LOG_FOR_DEBUG(F, A) fakio_log(LOG_DEBUG, (F), (A))
+  #define LOG_FOR_DEBUG(F, ...) fakio_log(LOG_DEBUG, F, ##__VA_ARGS__)
 #endif
 
 #endif

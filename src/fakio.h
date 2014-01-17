@@ -22,7 +22,7 @@ typedef struct fuser fuser_t;
 #define MAX_HOST_LEN 253
 #define MAX_PORT_LEN 6
 
-#include "flog.h"
+#include "futils.h"
 #include "fbuffer.h"
 #include "fuser.h"
 #include "fconfig.h"

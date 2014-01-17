@@ -7,7 +7,7 @@ static int handler(void* user, const char* section, const char* name,
 {
     fserver_t *server = user;
 
-    LOG_DEBUG("load conf: %s %s %s", section, name, value);
+    LOG_FOR_DEBUG("load conf: %s %s %s", section, name, value);
 
     if (strcmp("server", section) == 0) {
         if (strcmp("host", name) == 0) {
@@ -32,11 +32,13 @@ void load_config_file(const char *filename, fserver_t *server)
 {
     FILE *f = fopen(filename, "rb");
     if (f == NULL) {
-        LOG_ERROR("Can't load config file: %s", filename);
+        fakio_log(LOG_ERROR, "Can't load config file: %s", filename);
+        exit(1);
     }
 
     if (ini_parse_file(f, &handler, server) < 0) {
-        LOG_ERROR("Can't load config file: %s", filename);
+        fakio_log(LOG_ERROR, "Can't load config file: %s", filename);
+        exit(1);
     }
 
     fclose(f);

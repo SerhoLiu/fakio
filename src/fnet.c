@@ -1,22 +1,24 @@
 #include "fnet.h"
-#include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdlib.h>
+#include <stdio.h>
+
 
 int set_nonblocking(int fd)
 {
     int flags;
 
     if ((flags = fcntl(fd, F_GETFL)) == -1) {
-        LOG_WARN("fcntl(F_GETFL): %s", strerror(errno));
+        fakio_log(LOG_WARNING, "fcntl(F_GETFL): %s", strerror(errno));
         return -1;
     }
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-        LOG_WARN("fcntl(F_SETFL, O_NONBLOCK): %s", strerror(errno));
+        fakio_log(LOG_WARNING, "fcntl(F_SETFL, O_NONBLOCK): %s", strerror(errno));
         return -1;
     }
     return 0;
@@ -26,11 +28,11 @@ int set_socket_option(int fd)
 {
     int opt = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
-        LOG_WARN("setsockopt SO_REUSEADDR: %s", strerror(errno));
+        fakio_log(LOG_WARNING, "setsockopt SO_REUSEADDR: %s", strerror(errno));
         return -1;   
     }
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt)) == -1) {
-        LOG_WARN("setsockopt TCP_NODELAY: %s", strerror(errno));
+        fakio_log(LOG_WARNING, "setsockopt TCP_NODELAY: %s", strerror(errno));
         return -1;
     }
 
@@ -43,11 +45,11 @@ int fnet_create_and_bind(const char *addr, const char *port)
 
     int sfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sfd < 0) {
-        LOG_WARN("can't create socket: %s", strerror(errno));
+        fakio_log(LOG_WARNING, "can't create socket: %s", strerror(errno));
     }
 
     if (set_socket_option(sfd) < 0) {
-        LOG_WARN("set socket option error");
+        fakio_log(LOG_WARNING, "set socket option error");
     }
 
     memset(&sa, 0, sizeof(sa));
@@ -56,19 +58,19 @@ int fnet_create_and_bind(const char *addr, const char *port)
     sa.sin_addr.s_addr = htonl(INADDR_ANY);
     
     if (addr && inet_pton(AF_INET, addr, &sa.sin_addr) != 1) {
-        LOG_WARN("invalid bind address");
+        fakio_log(LOG_WARNING, "invalid bind address");
         close(sfd);
         return -1;
     }
 
     if (bind(sfd, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
-        LOG_WARN("bind: %s", strerror(errno));
+        fakio_log(LOG_WARNING, "bind: %s", strerror(errno));
         close(sfd);
         return -1;
     }
 
     if (set_nonblocking(sfd) < 0) {
-        LOG_WARN("set nonblocking error");
+        fakio_log(LOG_WARNING, "set nonblocking error");
         return -1;
     }
     return sfd;
@@ -86,7 +88,7 @@ int fnet_create_and_connect(const char *addr, const char *port, int blocking)
 
     int err = getaddrinfo(addr, port, &hints, &result);
     if (err != 0) {
-        LOG_WARN("%s:%s getaddrinfo: %s", addr, port, gai_strerror(err));
+        fakio_log(LOG_WARNING, "%s:%s getaddrinfo: %s", addr, port, gai_strerror(err));
         return -1;
     }
     for (rp = result; rp != NULL; rp = rp->ai_next) {
@@ -107,18 +109,18 @@ int fnet_create_and_connect(const char *addr, const char *port, int blocking)
         if (connect(listen_fd, rp->ai_addr, rp->ai_addrlen) < 0) {
             if (!blocking) {
                 if (errno == EHOSTUNREACH) {
-                    LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+                    fakio_log(LOG_WARNING, "connect %s:%s - %s", addr, port, strerror(errno));
                     close(listen_fd);
                     continue;
                 } else if (errno == EINPROGRESS) {
                     goto end;
                 } else {
-                    LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+                    fakio_log(LOG_WARNING, "connect %s:%s - %s", addr, port, strerror(errno));
                     close(listen_fd);
                     continue;
                 }   
             } else {
-                LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+                fakio_log(LOG_WARNING, "connect %s:%s - %s", addr, port, strerror(errno));
                 continue;
             }    
         } else {
@@ -127,7 +129,7 @@ int fnet_create_and_connect(const char *addr, const char *port, int blocking)
     }
 
     if (rp == NULL) {
-        LOG_WARN("connect %s:%s - %s", addr, port, strerror(errno));
+        fakio_log(LOG_WARNING, "connect %s:%s - %s", addr, port, strerror(errno));
         goto done;
     }
 
@@ -152,10 +154,10 @@ int socks5_get_server_reply(const char *ip, const char *port, uint8_t *reply)
     
     int r = inet_pton(AF_INET, ip, reply+4);
     if (r == 0) {
-        LOG_WARN("IPv4 addr not enable");
+        fakio_log(LOG_WARNING, "IPv4 addr not enable");
         return -1;
     } else if (r == -1) {
-        LOG_WARN("IPv4 %s", strerror(errno));
+        fakio_log(LOG_WARNING, "IPv4 %s", strerror(errno));
         return -1;
     }
 
@@ -171,19 +173,19 @@ int socks5_request_resolve(const unsigned char *buffer, int buflen,
     uint16_t ports;
     
     if (buflen < 10) {
-        LOG_WARN("buffer is less 10");
+        fakio_log(LOG_WARNING, "buffer is less 10");
         return -1;
     }
     
     /* 仅支持 TCP 连接方式 */
     if (buffer[0] != SOCKS_VER || buffer[1] != SOCKS_CONNECT) {
-        LOG_WARN("only tcp connect mode");
+        fakio_log(LOG_WARNING, "only tcp connect mode");
         return -1;
     }
     /*  IPv4 */
     if (buffer[3] == SOCKS_ATYPE_IPV4) {
         if (inet_ntop(AF_INET, buffer + 4, req->addr, INET_ADDRSTRLEN) == NULL) {
-            LOG_WARN("IPv4 Error %s", strerror(errno));
+            fakio_log(LOG_WARNING, "IPv4 Error %s", strerror(errno));
         }
         ports = ntohs(*(uint16_t*)(buffer + 8));
         snprintf(req->port, 5, "%d", ports);
@@ -201,10 +203,10 @@ int socks5_request_resolve(const unsigned char *buffer, int buflen,
         req->rlen = 7 + domain_len;
     }
     else {
-        LOG_WARN("unsupported addrtype: %d", buffer[3]);
+        fakio_log(LOG_WARNING, "unsupported addrtype: %d", buffer[3]);
         return -1;
     }
-    LOG_INFO("Connecting %s:%s", req->addr, req->port);
+    fakio_log(LOG_INFO, "Connecting %s:%s", req->addr, req->port);
 
     return 1;   
 }
@@ -216,7 +218,7 @@ int fakio_request_resolve(const uint8_t *buffer, int buflen,
     uint16_t ports;
     
     if (buflen < 10) {
-        LOG_WARN("buffer is less 10");
+        fakio_log(LOG_WARNING, "buffer is less 10");
         return -1;
     }
     
@@ -237,14 +239,14 @@ int fakio_request_resolve(const uint8_t *buffer, int buflen,
         
         /* 版本号 */
         if (buffer[0] != SOCKS_VER) {
-            LOG_WARN("SOCKS_VER not 5");
+            fakio_log(LOG_WARNING, "SOCKS_VER not 5");
             return -1;
         }
 
         /*  IPv4 */
         if (buffer[1] == SOCKS_ATYPE_IPV4) {
             if (inet_ntop(AF_INET, buffer + 2, req->addr, INET_ADDRSTRLEN) == NULL) {
-                LOG_WARN("IPv4 Error %s", strerror(errno));
+                fakio_log(LOG_WARNING, "IPv4 Error %s", strerror(errno));
             }
             ports = ntohs(*(uint16_t*)(buffer + 6));
             snprintf(req->port, 5, "%d", ports);
@@ -259,10 +261,10 @@ int fakio_request_resolve(const uint8_t *buffer, int buflen,
             snprintf(req->port, 5, "%d", ports);
             req->rlen = req->rlen + 1 + 1 + 1 + domain_len + 2;
         } else {
-            LOG_WARN("unsupported addrtype: %d", buffer[1]);
+            fakio_log(LOG_WARNING, "unsupported addrtype: %d", buffer[1]);
             return -1;
         }
-        LOG_INFO("%s Connecting %s:%s", req->username, req->addr, req->port);
+        fakio_log(LOG_INFO, "%s Connecting %s:%s", req->username, req->addr, req->port);
         return 1;      
     }
     

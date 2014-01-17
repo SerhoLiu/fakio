@@ -16,7 +16,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         int client_fd = accept(fd, NULL, NULL);
         if (client_fd < 0) {
             if (errno != EWOULDBLOCK) {
-                LOG_WARN("accept() failed: %s", strerror(errno));
+                fakio_log(LOG_WARNING,"accept() failed: %s", strerror(errno));
                 break;
             }
             continue;
@@ -27,14 +27,14 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         fserver_t *server = evdata;
         context_t *c = context_pool_get(server->pool, MASK_CLIENT);
         if (c == NULL) {
-            LOG_WARN("Client %d Can't get context", client_fd);
+            fakio_log(LOG_WARNING,"Client %d Can't get context", client_fd);
             close(client_fd);
         }
         c->client_fd = client_fd;
         c->loop = loop;
         c->server = server;
 
-        LOG_DEBUG("new client %d comming connection", client_fd);
+        LOG_FOR_DEBUG("new client %d comming connection", client_fd);
         create_event(loop, client_fd, EV_RDABLE, &client_handshake_cb, c);
         break;
     }
@@ -58,7 +58,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
             return;
         }
         if (rc == 0) {
-            LOG_DEBUG("client %d connection closed", client_fd);
+            LOG_FOR_DEBUG("client %d connection closed", client_fd);
             context_pool_release(c->pool, c, MASK_CLIENT);
             return;
         }
@@ -80,7 +80,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     //TODO: 多用户根据用户名查找 key
     c->user = fuser_find_user(c->server->users, req.username, req.name_len);
     if (c->user == NULL) {
-        LOG_WARN("user: %s Not Found!", req.username);
+        fakio_log(LOG_WARNING,"user: %s Not Found!", req.username);
         context_pool_release(c->pool, c, MASK_CLIENT);
         return;
     }
@@ -96,7 +96,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     r = fakio_request_resolve(buffer+req.rlen, HAND_DATA_SIZE-req.rlen,
                               &req, FNET_RESOLVE_NET);
     if (r != 1) {
-        LOG_WARN("socks5 request resolve error");
+        fakio_log(LOG_WARNING,"socks5 request resolve error");
         context_pool_release(c->pool, c, MASK_CLIENT);
         return;
     }
@@ -107,10 +107,10 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     }
 
     if (set_socket_option(remote_fd) < 0) {
-        LOG_WARN("set socket option error");
+        fakio_log(LOG_WARNING,"set socket option error");
     }
     
-    LOG_DEBUG("client %d remote %d at %p", client_fd, remote_fd, c);
+    LOG_FOR_DEBUG("client %d remote %d at %p", client_fd, remote_fd, c);
     
     c->remote_fd = remote_fd;
     context_set_mask(c, MASK_CLIENT|MASK_REMOTE);
@@ -145,12 +145,12 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
             if (errno == EAGAIN) {
                 return;
             }
-            LOG_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
+            LOG_FOR_DEBUG("recv() from client %d failed: %s", fd, strerror(errno));
             context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
         if (rc == 0) {
-            LOG_DEBUG("client %d connection closed", fd);
+            LOG_FOR_DEBUG("client %d connection closed", fd);
             context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
@@ -177,7 +177,7 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
             if (errno == EAGAIN) {
                 return;
             }
-            LOG_DEBUG("send() to client %d failed: %s", fd, strerror(errno));
+            LOG_FOR_DEBUG("send() to client %d failed: %s", fd, strerror(errno));
             context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
@@ -209,7 +209,7 @@ static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *
             if (errno == EAGAIN) {
                 return;
             }
-            LOG_DEBUG("send() failed to remote %d: %s", fd, strerror(errno));
+            LOG_FOR_DEBUG("send() failed to remote %d: %s", fd, strerror(errno));
             context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
             return;
         }
@@ -245,12 +245,12 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
         if (errno == EAGAIN) {
                 return;
         }
-        LOG_DEBUG("recv() failed form remote %d: %s", fd, strerror(errno));
+        LOG_FOR_DEBUG("recv() failed form remote %d: %s", fd, strerror(errno));
         context_pool_release(c->pool, c, MASK_CLIENT|MASK_REMOTE);
         return;
     }
     if (rc == 0) {
-        LOG_DEBUG("remote %d Connection closed", fd);
+        LOG_FOR_DEBUG("remote %d Connection closed", fd);
         context_pool_release(c->pool, c, MASK_REMOTE|MASK_CLIENT);
         return;
     }

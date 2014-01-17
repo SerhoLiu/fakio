@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -O1 -g -Wall
+CFLAGS := -std=c99  -pedantic -D_POSIX_C_SOURCE -O1 -g -Wall
 
 UNAME_S := $(shell uname -s)
 
@@ -9,8 +9,8 @@ endif
 
 BASE_OBJ = src/base/hashmap.o src/base/sha2.o src/base/ini.o \
            src/base/fevent.o src/base/aes.o
-ALL_OBJ = src/fconfig.o src/fnet.o src/fcrypt.o src/fcontext.o \
-          src/fhandler.o src/fuser.o $(BASE_OBJ)
+ALL_OBJ = src/futils.o src/fconfig.o src/fnet.o src/fcrypt.o \
+		  src/fcontext.o src/fhandler.o src/fuser.o $(BASE_OBJ)
 
 all: fakio-server fakio-client
 

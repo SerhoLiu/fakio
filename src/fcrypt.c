@@ -1,5 +1,6 @@
 #include "fcrypt.h"
 #include <fcntl.h>
+#include <stdio.h> //for debug
 
 
 void random_bytes(uint8_t *bytes, size_t len)

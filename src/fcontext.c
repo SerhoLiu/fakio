@@ -120,7 +120,7 @@ context_t *context_pool_get(context_pool_t *pool, int mask)
 {
     if (pool == NULL) return NULL;
 
-    LOG_DEBUG("Context size=%d current=%d used=%d",
+    LOG_FOR_DEBUG("Context size=%d current=%d used=%d",
         pool->max_size, pool->current_size, pool->used_size);
 
     struct context_node *node;
@@ -154,7 +154,7 @@ context_t *context_pool_get(context_pool_t *pool, int mask)
 
 static inline void delete_and_close_fd(context_t *c, int fd)
 {   
-    LOG_DEBUG("delete event context %p fd %d", c, fd);
+    LOG_FOR_DEBUG("delete event context %p fd %d", (void *)c, fd);
     if (fd != 0) {
         delete_event(c->loop, fd, EV_WRABLE);
         delete_event(c->loop, fd, EV_RDABLE);

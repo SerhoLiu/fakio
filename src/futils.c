@@ -22,13 +22,14 @@ void fakio_log(int level, const char *fmt, ...)
     struct timeval tv;
     gettimeofday(&tv,NULL);
     
-    const char *timefmt;
+    const char *timefmt = NULL;
 
     switch (level) {
         case LOG_DEBUG: timefmt = debug; break;
         case LOG_INFO: timefmt = info; break;
         case LOG_WARNING: timefmt = warn; break;
         case LOG_ERROR: timefmt = error; break;
+        default: return;
     }
 
     off = strftime(logmsg, sizeof(logmsg), timefmt, localtime(&tv.tv_sec));
