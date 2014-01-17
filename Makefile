@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -std=c99  -pedantic -D_POSIX_C_SOURCE -O1 -g -Wall
+CFLAGS := -std=c99  -pedantic -D_POSIX_C_SOURCE -D NDEBUG -O2 -Wall
 
 UNAME_S := $(shell uname -s)
 
