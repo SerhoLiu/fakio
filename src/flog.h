@@ -18,7 +18,7 @@
                           time_t now = time(NULL);\
                           char timestr[20];\
                           strftime(timestr, 20, "%F %T", localtime(&now));\
-                          fprintf(stderr, "\e[32m[%s DEBUG] \e[0m" format "\n", timestr, ##__VA_ARGS__);}\
+                          fprintf(stderr, "\033[32m[%s DEBUG] \033[0m" format "\n", timestr, ##__VA_ARGS__);}\
                           while(0) 
 
 #endif
@@ -27,14 +27,14 @@
                           time_t now = time(NULL);\
                           char timestr[20];\
                           strftime(timestr, 20, "%F %T", localtime(&now));\
-                          fprintf(stderr, "\e[32m[%s INFO] \e[0m" format "\n", timestr, ##__VA_ARGS__);}\
+                          fprintf(stderr, "\033[32m[%s INFO] \033[0m" format "\n", timestr, ##__VA_ARGS__);}\
                           while(0)
 
 #define LOG_WARN(format, ...) do {\
                           time_t now = time(NULL);\
                           char timestr[20];\
                           strftime(timestr, 20, "%F %T", localtime(&now));\
-                          fprintf(stderr, "\e[35m[%s WARN] \e[0m" format " %s:%s\n", timestr, ##__VA_ARGS__, __FILE__, TOSTR(__LINE__));}\
+                          fprintf(stderr, "\033[35m[%s WARN] \033[0m" format " %s:%s\n", timestr, ##__VA_ARGS__, __FILE__, TOSTR(__LINE__));}\
                           while(0)
 
 
@@ -42,7 +42,7 @@
                           time_t now = time(NULL);\
                           char timestr[20];\
                           strftime(timestr, 20, "%F %T", localtime(&now));\
-                          fprintf(stderr, "\e[31m[%s ERROR] \e[0m" format " %s:%s\n", timestr, ##__VA_ARGS__, __FILE__, TOSTR(__LINE__));exit(1);}\
+                          fprintf(stderr, "\033[31m[%s ERROR] \033[0m" format " %s:%s\n", timestr, ##__VA_ARGS__, __FILE__, TOSTR(__LINE__));exit(1);}\
                           while(0)
 
 
