@@ -3,10 +3,7 @@
 
 #include "fakio.h"
 #include "base/aes.h"
-#include <stdio.h> //for debug
 
-#define FCRYPT_SERVER 0
-#define FCRYPT_CLIENT 1
 
 struct fcrypt_ctx {
     aes_context aes;
@@ -61,66 +58,19 @@ static inline int fcrypt_ctx_init(fcrypt_ctx_t *ctx, uint8_t bytes[48])
 
 static inline int fcrypt_encrypt(fcrypt_ctx_t *ctx, fbuffer_t *buffer)
 {
-    /*printf("enc datalen %d\n", FBUF_DATA_LEN(buffer));
-
-    int i;
-    printf("key:\n");
-    for (i = 0; i < 16; i++)
-        printf("%d ", ctx->key[i]);
-    printf("\n");
-
-    printf("iv:\n");
-    for (i = 0; i < 16; i++)
-        printf("%d ", ctx->e_iv[i]);
-    printf("\n");
-
-    uint8_t *data = FBUF_DATA_AT(buffer);
-    printf("data:\n");
-    for (i = 0; i < 16; i++)
-        printf("%d ", data[i]);
-    printf("\n");*/
 
     return aes_crypt_cfb128(&ctx->aes, AES_ENCRYPT, FBUF_DATA_LEN(buffer),
                      &ctx->e_pos, ctx->e_iv,
                      FBUF_DATA_AT(buffer), FBUF_DATA_AT(buffer));
-
-    /*printf("palin:\n");
-    for (i = 0; i < 16; i++)
-        printf("%d ", data[i]);
-    printf("\n");*/
 }
 
 
 static inline int fcrypt_decrypt(fcrypt_ctx_t *ctx, fbuffer_t *buffer)
 {   
-    /*printf("dec datalen %d\n", FBUF_DATA_LEN(buffer));
-
-    int i;
-    printf("key:\n");
-    for (i = 0; i < 16; i++)
-        printf("%d ", ctx->key[i]);
-    printf("\n");
-
-    printf("iv:\n");
-    for (i = 0; i < 16; i++)
-        printf("%d ", ctx->d_iv[i]);
-    printf("\n");
-
-    uint8_t *data = FBUF_DATA_AT(buffer);
-    printf("plain:\n");
-    for (i = 0; i < 16; i++)
-        printf("%d ", data[i]);
-    printf("\n");*/
 
     return aes_crypt_cfb128(&ctx->aes, AES_DECRYPT, FBUF_DATA_LEN(buffer),
                      &ctx->d_pos, ctx->d_iv,
                      FBUF_DATA_AT(buffer), FBUF_DATA_AT(buffer));
-
-    /*printf("data:\n");
-    for (i = 0; i < 16; i++)
-        printf("%d ", data[i]);
-    printf("\n");
-    return 1;*/
 }
 
 #endif

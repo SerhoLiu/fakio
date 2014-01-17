@@ -7,7 +7,7 @@
 int main (int argc, char *argv[])
 {
     if (argc != 2) {
-        fakio_log(LOG_ERROR, "Usage: %s --config_path\n", argv[0]);
+        fakio_log(LOG_ERROR, "Usage: %s config_file", argv[0]);
         exit(1);
     }
 
@@ -18,10 +18,9 @@ int main (int argc, char *argv[])
         exit(1);
     }
     
-    //config cfg;
     load_config_file(argv[1], &server);
 
-    //signal(SIGPIPE, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
 
     
     /* 初始化 Context */
@@ -53,8 +52,8 @@ int main (int argc, char *argv[])
 
     create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, &server);
 
-    fakio_log(LOG_INFO, "Fakio Server Start...... Binding in %s:%s", server.host, server.port);
-    fakio_log(LOG_INFO, "Fakio Server Event Loop Start, Use %s", get_event_api_name());
+    fakio_log(LOG_INFO, "Fakio server start...... binding in %s:%s", server.host, server.port);
+    fakio_log(LOG_INFO, "Fakio server event loop start, use %s", get_event_api_name());
     start_event_loop(loop);
     
     context_pool_destroy(server.pool);

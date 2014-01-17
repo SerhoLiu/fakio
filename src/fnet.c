@@ -167,8 +167,7 @@ int socks5_get_server_reply(const char *ip, const char *port, uint8_t *reply)
     return 10;
 }
 
-int socks5_request_resolve(const unsigned char *buffer, int buflen,
-                           frequest_t *req)
+int socks5_request_resolve(const uint8_t *buffer, int buflen, frequest_t *req)
 {
     uint16_t ports;
     

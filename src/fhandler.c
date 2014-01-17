@@ -77,19 +77,17 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     fakio_request_resolve(FBUF_DATA_AT(c->req), HAND_DATA_SIZE,
                           &req, FNET_RESOLVE_USER);
 
-    //TODO: 多用户根据用户名查找 key
     c->user = fuser_find_user(c->server->users, req.username, req.name_len);
     if (c->user == NULL) {
         fakio_log(LOG_WARNING,"user: %s Not Found!", req.username);
         context_pool_release(c->pool, c, MASK_CLIENT);
         return;
     }
-    //aes_init(c->user->key, req.IV, &c->e_ctx, &c->d_ctx);
+    
     fcrypt_set_key(c->crypto, c->user->key, 256);
 
     uint8_t buffer[HAND_DATA_SIZE];
-    //int len = aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->req, req.rlen), 
-    //                      HAND_DATA_SIZE-req.rlen, buffer+req.rlen);
+    
     fcrypt_decrypt_all(c->crypto, req.IV, HAND_DATA_SIZE-req.rlen,
                        FBUF_DATA_SEEK(c->req, req.rlen), buffer+req.rlen);
 
@@ -158,7 +156,7 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
         
         break;
     }
-    //fakio_decrypt(c, c->req); 
+    
     fcrypt_decrypt(c->crypto, c->req);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
@@ -256,7 +254,7 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
     }
 
     FBUF_COMMIT_WRITE(c->res, rc);
-    //fakio_encrypt(c, c->res);
+    
     fcrypt_encrypt(c->crypto, c->res);
     
     delete_event(loop, fd, EV_RDABLE);

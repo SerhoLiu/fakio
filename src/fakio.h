@@ -16,7 +16,7 @@ typedef struct context_pool context_pool_t;
 typedef struct context context_t;
 typedef struct fuser fuser_t;
 
-#define BUFSIZE (4096+16)
+#define BUFSIZE 4088
 #define MAX_USERNAME 256
 
 #define MAX_HOST_LEN 253
