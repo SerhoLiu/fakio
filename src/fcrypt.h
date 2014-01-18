@@ -3,10 +3,7 @@
 
 #include "fakio.h"
 #include "base/aes.h"
-#include <stdio.h> //for debug
 
-#define FCRYPT_SERVER 0
-#define FCRYPT_CLIENT 1
 
 struct fcrypt_ctx {
     aes_context aes;
@@ -18,8 +15,9 @@ struct fcrypt_ctx {
     size_t e_pos, d_pos;
 };
 
+fcrypt_rand_t *fcrypt_rand_new();
 
-void random_bytes(uint8_t *bytes, size_t len);
+void random_bytes(fcrypt_rand_t *rand, uint8_t *bytes, size_t len);
 
 
 static inline int fcrypt_set_key(fcrypt_ctx_t *ctx, uint8_t *key, size_t keysize)
@@ -65,7 +63,6 @@ static inline int fcrypt_encrypt(fcrypt_ctx_t *ctx, fbuffer_t *buffer)
     return aes_crypt_cfb128(&ctx->aes, AES_ENCRYPT, FBUF_DATA_LEN(buffer),
                      &ctx->e_pos, ctx->e_iv,
                      FBUF_DATA_AT(buffer), FBUF_DATA_AT(buffer));
-
 }
 
 

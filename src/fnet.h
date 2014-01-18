@@ -38,7 +38,7 @@ int fnet_create_and_bind(const char *addr, const char *port);
 int fnet_create_and_connect(const char *addr, const char *port, int blocking);
 
 /* for client */
-int socks5_request_resolve(const unsigned char *buffer, int buflen,
+int socks5_request_resolve(const uint8_t *buffer, int buflen,
                            frequest_t *req);
 
 int socks5_get_server_reply(const char *ip, const char *port,
