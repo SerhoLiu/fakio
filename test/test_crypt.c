@@ -7,7 +7,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/time.h>
-#include <openssl/rand.h>
 
 
 long long get_ustime_sec(void)
@@ -25,7 +24,7 @@ long long bench_urandom(int times)
 {
     int i;
     FILE *urandom;
-    unsigned char key[16];
+    unsigned char key[1024];
 
     long long start = get_ustime_sec();
     for (i = 0; i < times; i++) {
@@ -34,7 +33,7 @@ long long bench_urandom(int times)
             fprintf (stderr, "Cannot open /dev/urandom!\n");
             return 0;
         }
-        fread (key, sizeof(char), 16, urandom);
+        fread (key, sizeof(char), 1024, urandom);
         fclose(urandom);    
     }
 
@@ -44,7 +43,7 @@ long long bench_urandom(int times)
 long long bench_urandom2(int times)
 {
     int fd, i, rc, len;
-    unsigned char key[16];
+    unsigned char key[1024];
     len = 0;
     long long start = get_ustime_sec();
     for (i = 0; i < times; i++) {
@@ -54,8 +53,8 @@ long long bench_urandom2(int times)
             return 0;
         }
 
-        while (len < 16) {
-            rc = read(fd, key+len, 16-len);
+        while (len < 1024) {
+            rc = read(fd, key+len, 1024-len);
             if (rc < 0) {
                 fprintf (stderr, "Cannot open /dev/urandom!\n");
                 break;
@@ -64,31 +63,22 @@ long long bench_urandom2(int times)
         }
         close(fd);
         len = 0;
-
-        int j;
-        for (j = 0; j < 16; j++) {
-            printf("%d ", key[j]);
-        }
-        printf("\n");  
     }
     return (get_ustime_sec() - start);
 }
 
 
-long long bench_openssl_random(int times)
+long long bench_random(int times)
 {
     int i;
-    unsigned char key[16];
+    fcrypt_rand_t r;
+    fcrypt_rand_init(&r);
+
+    unsigned char key[1024];
 
     long long start = get_ustime_sec();
     for (i = 0; i < times; i++) {
-        RAND_bytes(key, 16);
-
-        int j;
-        for (j = 0; j < 16; j++) {
-            printf("%d ", key[j]);
-        }
-        printf("\n");
+        random_bytes(&r, key, 1024);
     }
     return (get_ustime_sec() - start);
 }
@@ -97,8 +87,9 @@ long long bench_openssl_random(int times)
 
 int main(int argc, char const *argv[])
 {
-    long long times1 = bench_urandom2(atoi(argv[1]));
-    long long times2 = bench_openssl_random(atoi(argv[1]));
-    printf("%lld vs %lld\n", times1, times2);
+    long long times1 = bench_urandom(atoi(argv[1]));
+    long long times2 = bench_urandom2(atoi(argv[1]));
+    long long times3 = bench_random(atoi(argv[1]));
+    printf("%lld vs %lld vs %lld\n", times1, times2, times3);
     return 0;
 }
