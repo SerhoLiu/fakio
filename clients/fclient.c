@@ -15,6 +15,7 @@ typedef struct {
     uint8_t username[MAX_USERNAME];
     uint8_t name_len;
     uint8_t key[32];
+    fcrypt_rand_t *r;
     
     char chost[MAX_HOST_LEN];
     char cport[MAX_PORT_LEN];
@@ -166,7 +167,7 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
 
             //Request info
 
-            random_bytes(FBUF_WRITE_AT(c->req), 16);
+            random_bytes(client.r, FBUF_WRITE_AT(c->req), 16);
 
 
             *FBUF_WRITE_SEEK(c->req, 16) = client.name_len;
@@ -476,6 +477,12 @@ int main (int argc, char *argv[])
     }
 
     client_load_config_file(argv[1], &client);
+
+    client.r = fcrypt_rand_new();
+    if (client.r == NULL) {
+        fakio_log(LOG_ERROR, "Start Error!");
+        exit(1);
+    }
 
     /* 初始化 Context */
     pool = context_pool_create(100);

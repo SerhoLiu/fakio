@@ -115,7 +115,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     FBUF_REST(c->req);
     FBUF_REST(c->res);
 
-    random_bytes(buffer, 64);
+    random_bytes(c->server->r, buffer, 64);
     uint8_t bytes[64];
     memcpy(bytes, buffer, 64);
     fcrypt_encrypt_all(c->crypto, bytes, 48, buffer+16, buffer+16);

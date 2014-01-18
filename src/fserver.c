@@ -22,6 +22,11 @@ int main (int argc, char *argv[])
 
     signal(SIGPIPE, SIG_IGN);
 
+    server.r = fcrypt_rand_new();
+    if (server.r == NULL) {
+        fakio_log(LOG_ERROR, "Start Error!");
+        exit(1);
+    }
     
     /* 初始化 Context */
     server.pool = context_pool_create(100);

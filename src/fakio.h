@@ -9,6 +9,7 @@
 #include "base/hashmap.h"
 
 typedef struct fcrypt_ctx fcrypt_ctx_t;
+typedef struct fcrypt_rand fcrypt_rand_t;
 typedef struct fserver fserver_t;
 typedef struct fbuffer fbuffer_t;
 typedef struct frequest frequest_t;
@@ -35,6 +36,8 @@ struct fserver {
     char port[MAX_PORT_LEN];
     context_pool_t *pool;
     hashmap *users;
+
+    fcrypt_rand_t *r;
 };
 
 #endif
