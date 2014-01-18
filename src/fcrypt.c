@@ -3,6 +3,26 @@
 #include <sys/time.h>
 #include "base/aes.h"
 
+struct fcrypt_rand {
+    aes_context aes;
+
+    int budget;
+    uint8_t key[16];
+    uint8_t time[16];
+    uint8_t dst[16];
+    uint8_t seed[16];
+};
+
+
+fcrypt_rand_t *fcrypt_rand_new()
+{
+    fcrypt_rand_t *r = malloc(sizeof(*r));
+    if (r == NULL) return NULL;
+    
+    r->budget = 0;
+    return r;
+}
+
 
 static inline int entropy_reader(uint8_t *bytes, size_t len)
 {

@@ -15,23 +15,7 @@ struct fcrypt_ctx {
     size_t e_pos, d_pos;
 };
 
-
-struct fcrypt_rand {
-    aes_context aes;
-
-    int budget;
-    uint8_t key[16];
-    uint8_t time[16];
-    uint8_t dst[16];
-    uint8_t seed[16];
-};
-
-
-static inline void fcrypt_rand_init(fcrypt_rand_t *rand)
-{
-    rand->budget = 0;
-}
-
+fcrypt_rand_t *fcrypt_rand_new();
 
 void random_bytes(fcrypt_rand_t *rand, uint8_t *bytes, size_t len);
 
