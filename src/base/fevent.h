@@ -18,6 +18,7 @@
 struct event_loop;
 
 typedef void ev_callback(struct event_loop *loop, int fd, int mask, void *evdata);
+typedef int time_ev_callback(struct event_loop *loop, long long id, void *evdata);
 
 typedef struct ev_event {
     int mask;
@@ -25,6 +26,18 @@ typedef struct ev_event {
     ev_callback *ev_write;
     void *evdata;       
 } ev_event;
+
+typedef struct time_event {
+
+    long long id;
+
+    long when_sec; /* seconds */
+    long when_nsec; /* Nanoseconds */
+
+    time_ev_callback *time_call;
+    void *evdata;
+
+} time_vent;
 
 typedef struct ev_fired {
     int fd;
