@@ -26,7 +26,7 @@ struct min_heap;
 struct event_loop;
 
 typedef void ev_callback(struct event_loop *loop, int fd, int mask, void *evdata);
-typedef long time_ev_callback(struct event_loop *loop, long long id, void *evdata);
+typedef long time_ev_callback(struct event_loop *loop, void *evdata);
 
 typedef struct ev_event {
     int mask;

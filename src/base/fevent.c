@@ -399,7 +399,7 @@ static int process_time_events(event_loop *loop)
             (now_sec == te->when_sec && now_us < te->when_usec)) break;
 
         int retval;
-        retval = te->time_call(loop, te->min_heap_idx, te->evdata);
+        retval = te->time_call(loop, te->evdata);
         processed++;
         
         if (retval != EV_TIMER_END) {

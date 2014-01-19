@@ -10,6 +10,18 @@ static void client_writable_cb(struct event_loop *loop, int fd, int mask, void *
 static void remote_writable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 
+static long handshake_timeout_cb(struct event_loop *loop, void *evdata)
+{   
+    context_t *c = evdata;
+
+    if (c->remote_fd == 0) {
+        fakio_log(LOG_WARNING,"client %d handshake timeout!", c->client_fd);
+        context_pool_release(c->pool, c, MASK_CLIENT);
+    }
+    
+    return EV_TIMER_END;
+}
+
 void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 {
     while (1) {
@@ -36,6 +48,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
         LOG_FOR_DEBUG("new client %d comming connection", client_fd);
         create_event(loop, client_fd, EV_RDABLE, &client_handshake_cb, c);
+        create_time_event(loop, 1000, &handshake_timeout_cb, c);
         break;
     }
 }
@@ -126,7 +139,8 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     fcrypt_ctx_init(c->crypto, bytes+16);
 
     delete_event(loop, client_fd, EV_RDABLE);
-    create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);    
+    create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);
+
     memset(buffer, 0, HAND_DATA_SIZE);
     return;
 }
