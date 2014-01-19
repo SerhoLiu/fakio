@@ -8,28 +8,28 @@
 #include <stdlib.h>
 #include "fevent.h"
 
-typedef struct {
+typedef struct min_heap {
     time_event** p;
     long n, a;
-} min_heap;
+} min_heap_t;
 
 
-static inline int _reserve(min_heap *s, long n);
-static inline void _shift_up(min_heap *s, long hole_index, time_event *e);
-static inline void _shift_down(min_heap *s, long hole_index, time_event *e);
+static inline int _reserve(min_heap_t *s, long n);
+static inline void _shift_up(min_heap_t *s, long hole_index, time_event *e);
+static inline void _shift_down(min_heap_t *s, long hole_index, time_event *e);
 
 static inline int min_heap_elem_greater(time_event *a, time_event *b)
 {
     if (a->when_sec != b->when_sec) return (a->when_sec - b->when_sec);
-    return (a->when_nsec - b->when_nsec);
+    return (a->when_usec - b->when_usec);
 }
 
-static inline void min_heap_ctor(min_heap *s)
+static inline void min_heap_ctor(min_heap_t *s)
 { 
-    s->p = 0; s->n = 0; s->a = 0; 
+    s->p = NULL; s->n = 0; s->a = 0; 
 }
 
-static inline void min_heap_dtor(min_heap *s) 
+static inline void min_heap_dtor(min_heap_t *s) 
 {
     free(s->p);
 }
@@ -39,17 +39,17 @@ static inline void min_heap_elem_init(time_event *e)
     e->min_heap_idx = -1; 
 }
 
-static inline unsigned min_heap_size(min_heap *s)
+static inline unsigned min_heap_size(min_heap_t *s)
 { 
     return s->n; 
 }
 
-static inline time_event *min_heap_top(min_heap *s)
+static inline time_event *min_heap_top(min_heap_t *s)
 { 
-    return s->n ? *s->p : 0; 
+    return s->n ? *s->p : NULL; 
 }
 
-static inline int min_heap_push(min_heap *s, time_event *e)
+static inline int min_heap_push(min_heap_t *s, time_event *e)
 {
     if (_reserve(s, s->n + 1))
         return -1;
@@ -57,7 +57,7 @@ static inline int min_heap_push(min_heap *s, time_event *e)
     return 0;
 }
 
-static inline time_event *min_heap_pop(min_heap *s)
+static inline time_event *min_heap_pop(min_heap_t *s)
 {
     if (s->n) {
         time_event* e = *s->p;
@@ -68,7 +68,7 @@ static inline time_event *min_heap_pop(min_heap *s)
     return NULL;
 }
 
-static inline int min_heap_delete(min_heap *s, time_event *e)
+static inline int min_heap_delete(min_heap_t *s, time_event *e)
 {
     if (e->min_heap_idx != -1) {
         time_event *last = s->p[--s->n];
@@ -90,7 +90,7 @@ static inline int min_heap_delete(min_heap *s, time_event *e)
     return -1;
 }
 
-static inline int _reserve(min_heap *s, long n)
+static inline int _reserve(min_heap_t *s, long n)
 {
     if (s->a < n) {
         time_event** p;
@@ -106,7 +106,7 @@ static inline int _reserve(min_heap *s, long n)
 }
 
 
-static inline void _shift_up(min_heap *s, long hole_index, time_event *e)
+static inline void _shift_up(min_heap_t *s, long hole_index, time_event *e)
 {
     long parent = (hole_index - 1) / 2;
     while (hole_index && min_heap_elem_greater(s->p[parent], e)) {
@@ -117,7 +117,7 @@ static inline void _shift_up(min_heap *s, long hole_index, time_event *e)
     (s->p[hole_index] = e)->min_heap_idx = hole_index;
 }
 
-static inline void _shift_down(min_heap *s, long hole_index, time_event *e)
+static inline void _shift_down(min_heap_t *s, long hole_index, time_event *e)
 {
     long min_child = 2 * (hole_index + 1);
     while (min_child <= s->n) {
