@@ -10,7 +10,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/time.h>
+#include "minheap.h"
+
+
+#ifdef USE_MONOTONIC
+    #include <time.h>
+#else 
+    #include <sys/time.h>
+#endif
 
 #ifdef USE_EPOLL
 
@@ -209,11 +216,19 @@ event_loop *create_event_loop(int setsize)
         return NULL;
     }
 
+    loop->timeheap = malloc(sizeof(min_heap_t));
+    if (loop->timeheap == NULL) {
+        free(loop);
+        return NULL;
+    }
+    min_heap_ctor(loop->timeheap);
+
     loop->events = malloc(sizeof(ev_event) * setsize);
     loop->fireds =  malloc(sizeof(ev_fired) * setsize);
     if (loop->events == NULL || loop->fireds == NULL) {
         free(loop->events);
         free(loop->fireds);
+        free(loop->timeheap);
         free(loop);
         return NULL;
     }
@@ -238,6 +253,8 @@ void delete_event_loop(event_loop *loop)
     ev_api_free(loop);
     free(loop->events);
     free(loop->fireds);
+    min_heap_dtor(loop->timeheap);
+    free(loop->timeheap);
     free(loop);
 }
 
@@ -300,48 +317,178 @@ int get_event_mask(event_loop *loop, int fd)
     return ev->mask;
 }
 
+
+/* 时间事件 */
+static inline void get_time(long *seconds, long *microseconds)
+{
+#ifdef USE_MONOTONIC
+
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    *seconds = ts.tv_sec;
+    *microseconds = ts.tv_nsec / 1000;
+
+#else
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    *seconds = tv.tv_sec;
+    *microseconds = tv.tv_usec;
+
+#endif
+}
+
+/* 这里使用毫秒，毕竟纳秒用在这里太小了 */
+static void add_millisec_to_now(long long milliseconds, long *sec, long *us)
+{
+    long cur_sec, cur_us, when_sec, when_us;
+
+    get_time(&cur_sec, &cur_us);
+
+    when_sec = cur_sec + milliseconds / 1000;
+    when_us = cur_us + (milliseconds % 1000) * 1000;
+
+    if (when_us >= 1000000) {
+        when_sec ++;
+        when_us -= 1000000;
+    }
+    *sec = when_sec;
+    *us = when_us;
+}
+
+time_event *create_time_event(event_loop *loop, long long milliseconds,
+                            time_ev_callback *cb, void *evdata)
+{
+    time_event *te;
+    te = malloc(sizeof(*te));
+    if (te == NULL) return NULL;
+
+    min_heap_elem_init(te);
+
+    add_millisec_to_now(milliseconds, &te->when_sec, &te->when_usec);
+    
+    te->time_call = cb;
+    te->evdata = evdata;
+
+    min_heap_push(loop->timeheap, te);
+
+    return te;
+}
+
+int delete_time_event(event_loop *loop, time_event *te)
+{
+    if (min_heap_delete(loop->timeheap, te) != 0) {
+        return -1;
+    }
+
+    free(te);
+
+    return 0;
+}
+
+static int process_time_events(event_loop *loop)
+{
+    int processed = 0;
+    time_event *te;
+    
+    if (min_heap_size(loop->timeheap) == 0) return 0;
+
+    long now_sec, now_us;
+
+    while ((te = min_heap_top(loop->timeheap))) {
+        
+        get_time(&now_sec, &now_us);
+
+        if (now_sec < te->when_sec ||
+            (now_sec == te->when_sec && now_us < te->when_usec)) break;
+
+        int retval;
+        retval = te->time_call(loop, te->min_heap_idx, te->evdata);
+        processed++;
+        
+        if (retval != EV_TIMER_END) {
+            add_millisec_to_now(retval, &te->when_sec, &te->when_usec);
+        } else {
+            delete_time_event(loop, te);
+        }  
+    }
+
+    return processed;
+}
+
+
 int process_events(event_loop *loop, int flags)
 {
     int processed = 0, numevents;
 
     /* 如果 flags 为0,则直接返回 */
-    if (!flags) return 0;
+    if (!(flags & EV_TIME_EVENTS) && !(flags & EV_FILE_EVENTS)) return 0;
     
+    if (loop->maxfd != -1 ||
+        ((flags & EV_TIME_EVENTS) && !(flags & EV_DONT_WAIT))) {
 
-    int j;
-    struct timeval tv, *tvp;
-        
-    /* 如果设置 EV_WAIT,将一直等待到事件发生再返回 */
-    if (flags != EV_WAIT) {
-        tv.tv_sec = tv.tv_usec = 0;
-        tvp = &tv;
-    } else {
-        tvp = NULL;
-    }
+        int j;
+        time_event *shortest = NULL;
+        struct timeval tv, *tvp;
+
+        if (flags & EV_TIME_EVENTS && !(flags & EV_DONT_WAIT)) {
+            shortest = min_heap_top(loop->timeheap);
+        }
+
+        if (shortest != NULL) {
+            long now_sec, now_us;
+            get_time(&now_sec, &now_us);
+
+            tvp = &tv;
+            tvp->tv_sec = shortest->when_sec - now_sec;
+            
+            if (shortest->when_usec < now_us) {
+                tvp->tv_usec = ((shortest->when_usec+1000000) - now_us);
+                tvp->tv_sec--;
+            } else {
+                tvp->tv_usec = shortest->when_usec - now_us;
+            }
+
+            // 时间差小于 0 ，说明事件已经可以执行了，将秒和毫秒设为 0 （不阻塞）
+            if (tvp->tv_sec < 0) tvp->tv_sec = 0;
+            if (tvp->tv_usec < 0) tvp->tv_usec = 0;
+        } else {
+            if (flags & EV_DONT_WAIT) {
+                tv.tv_sec = tv.tv_usec = 0;
+                tvp = &tv;
+            } else {
+                tvp = NULL;
+            }
+        }
 
         // 处理文件事件
-    numevents = ev_api_poll(loop, tvp);
-    for (j = 0; j < numevents; j++) {
+        numevents = ev_api_poll(loop, tvp);
+        for (j = 0; j < numevents; j++) {
             
-        /* 根据 fired 数组，从 events 数组中取出事件 */
-        ev_event *ev = &loop->events[loop->fireds[j].fd];
-        int mask = loop->fireds[j].mask;
-        int fd = loop->fireds[j].fd;
-        int rfired = 0;
+            /* 根据 fired 数组，从 events 数组中取出事件 */
+            ev_event *ev = &loop->events[loop->fireds[j].fd];
+            int mask = loop->fireds[j].mask;
+            int fd = loop->fireds[j].fd;
+            int rfired = 0;
 
-        /*
-         * 因为一个已处理的事件有可能对当前被执行的事件进行了修改, 因此在执行当前事件前,
-         * 需要再进行一次检查,确保事件可以被执行
-         */
-        if (ev->mask & mask & EV_RDABLE) {
-            rfired = 1;
-            ev->ev_read(loop, fd , mask, ev->evdata);
+            /*
+             * 因为一个已处理的事件有可能对当前被执行的事件进行了修改, 因此在执行当前事件前,
+             * 需要再进行一次检查,确保事件可以被执行
+             */
+            if (ev->mask & mask & EV_RDABLE) {
+                rfired = 1;
+                ev->ev_read(loop, fd , mask, ev->evdata);
+            }
+            if (ev->mask & mask & EV_WRABLE) {
+                if (!rfired || ev->ev_read != ev->ev_write)
+                    ev->ev_write(loop, fd, mask, ev->evdata);
+            }
+            processed++;
         }
-        if (ev->mask & mask & EV_WRABLE) {
-            if (!rfired || ev->ev_read != ev->ev_write)
-                ev->ev_write(loop, fd, mask, ev->evdata);
-        }
-        processed++;
+    }
+
+    if (flags & EV_TIME_EVENTS) {
+        processed += process_time_events(loop);
     }
     
     return processed;
@@ -356,7 +503,7 @@ void start_event_loop(event_loop *loop)
 {
     loop->stop = 0;
     while (!loop->stop) {
-        process_events(loop, EV_WAIT);  /* 不等待 */
+        process_events(loop, EV_ALL_EVENTS);  /* 不等待 */
     }
 }
 
