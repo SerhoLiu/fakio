@@ -4,7 +4,7 @@ CFLAGS := -std=c99  -pedantic -O1 -g -Wall
 UNAME_S := $(shell uname -s)
 
 ifeq ($(UNAME_S), Linux)
-	CFLAGS += -D USE_EPOLL -D USE_MONOTONIC
+	CFLAGS += -D_GNU_SOURCE -D USE_EPOLL -D USE_MONOTONIC
 	LIBS := -lrt
 endif
 

@@ -6,8 +6,6 @@
  * All rights reserved.
  */
 
-#define _POSIX_C_SOURCE 200809L
-
 #include "fevent.h"
 #include <time.h>
 #include <stdlib.h>

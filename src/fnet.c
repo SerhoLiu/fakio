@@ -1,5 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
-
 #include "fnet.h"
 #include <sys/types.h>
 #include <sys/socket.h>
