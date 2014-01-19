@@ -77,6 +77,7 @@ static context_t *context_create()
         return NULL;
     }
     c->user = NULL;
+    c->client_fd = c->remote_fd = 0;
 
     return c;
 }
