@@ -6,18 +6,16 @@
  * All rights reserved.
  */
 
+#define _POSIX_C_SOURCE 200809L
+
 #include "fevent.h"
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/time.h>
 #include "minheap.h"
 
-
-#ifdef USE_MONOTONIC
-    #include <time.h>
-#else 
-    #include <sys/time.h>
-#endif
 
 #ifdef USE_EPOLL
 
