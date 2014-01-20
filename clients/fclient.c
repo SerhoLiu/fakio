@@ -260,9 +260,6 @@ void server_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
         break;
     }
     
-
-    //aes_init(client.key, FBUF_DATA_AT(c->res), &c->e_ctx, &c->d_ctx);
-    //aes_decrypt(&c->d_ctx, FBUF_DATA_SEEK(c->res, 16), 16, c->key);
     uint8_t bytes[48];
     fcrypt_decrypt_all(c->crypto, FBUF_DATA_AT(c->res), 48, 
                        FBUF_DATA_SEEK(c->res, 16), bytes);
@@ -297,7 +294,7 @@ static void remote_readable_cb(struct event_loop *loop, int fd, int mask, void *
         
         break;
     }
-    //fakio_decrypt(c, c->res);
+
     fcrypt_decrypt(c->crypto, c->res);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->client_fd, EV_WRABLE, &client_writable_cb, c);
@@ -392,7 +389,6 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
     }
 
     FBUF_COMMIT_WRITE(c->req, rc);
-    //fakio_encrypt(c, c->req);
     fcrypt_encrypt(c->crypto, c->req);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
@@ -514,7 +510,6 @@ int main (int argc, char *argv[])
     fakio_log(LOG_INFO, "Fakio client event loop start, use %s", get_event_api_name());
     start_event_loop(loop);
 
-    //context_list_free(list);
     delete_event_loop(loop);
     
     return 0;
