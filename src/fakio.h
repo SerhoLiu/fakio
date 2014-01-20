@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include "base/hashmap.h"
+#include "base/fevent.h"
 
 typedef struct fcrypt_ctx fcrypt_ctx_t;
 typedef struct fcrypt_rand fcrypt_rand_t;
@@ -38,6 +39,7 @@ struct fserver {
     char port[MAX_PORT_LEN];
     context_pool_t *pool;
     hashmap *users;
+    event_loop *loop;
 
     fcrypt_rand_t *r;
 };
