@@ -31,6 +31,11 @@ static inline void min_heap_ctor(min_heap_t *s)
 
 static inline void min_heap_dtor(min_heap_t *s) 
 {
+    /* 加入释放指向的元素 */
+    long i;
+    for (i = 0; i < s->n; i++) {
+        free(s->p[i]);
+    }
     free(s->p);
 }
 

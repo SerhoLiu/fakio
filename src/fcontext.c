@@ -35,22 +35,6 @@ context_pool_t *context_pool_create(int maxsize)
     return pool;
 }
 
-void context_pool_destroy(context_pool_t *pool)
-{
-    if (pool == NULL) return;
-    struct context_node *current, *next;
-    
-    int len = pool->current_size;
-    current = pool->head;
-    while (len--) {
-        next = current->next;
-        free(current);
-        current = next;
-    }
-
-    free(pool);
-}
-
 static context_t *context_create()
 {
     context_t *c = (context_t *)malloc(sizeof(*c));
@@ -64,15 +48,15 @@ static context_t *context_create()
     }
     FBUF_CREATE(c->res);
     if (c->res == NULL) {
-        free(c->req);
+        FBUF_FREE(c->req);
         free(c);
         return NULL;
     }
     
     c->crypto = malloc(sizeof(struct fcrypt_ctx));
     if (c->crypto == NULL) {
-        free(c->req);
-        free(c->res);
+        FBUF_FREE(c->req);
+        FBUF_FREE(c->res);
         free(c);
         return NULL;
     }
@@ -85,6 +69,11 @@ static context_t *context_create()
 void context_set_mask(context_t *c, int mask)
 {
     c->node->mask = mask;
+}
+
+int context_get_mask(context_t *c)
+{
+    return c->node->mask;
 }
 
 /* 在 context list 头部添加一个节点 */
@@ -115,6 +104,15 @@ static struct context_node *context_pool_add_node(context_pool_t *pool)
 
     pool->current_size++;
     return node;
+}
+
+static inline void context_pool_delete_node(struct context_node *node)
+{
+    FBUF_FREE(node->c->req);
+    FBUF_FREE(node->c->res);
+    free(node->c->crypto);
+    free(node->c);
+    free(node);
 }
 
 context_t *context_pool_get(context_pool_t *pool, int mask)
@@ -163,6 +161,24 @@ static inline void delete_and_close_fd(context_t *c, int fd)
     }
 }
 
+static inline void reuse_context_node(context_pool_t *pool,
+                                      struct context_node *node)
+{
+    FBUF_REST(node->c->req);
+    FBUF_REST(node->c->res);
+
+    if (node != pool->head) {
+        node->prev->next = node->next;
+        if (node->next != NULL) {
+            node->next->prev = node->prev;
+        }
+        node->prev = NULL;
+        node->next = pool->head;
+        pool->head->prev = node;
+        pool->head = node;
+    }
+    pool->used_size--;
+}
 
 void context_pool_release(context_pool_t *pool, context_t *c, int mask)
 {
@@ -185,19 +201,22 @@ void context_pool_release(context_pool_t *pool, context_t *c, int mask)
 
     node->mask &= (~mask);
     if (node->mask == MASK_NONE) {
-        FBUF_REST(node->c->req);
-        FBUF_REST(node->c->res);
-
-        if (node != pool->head) {
-            node->prev->next = node->next;
-            if (node->next != NULL) {
-                node->next->prev = node->prev;
-            }
-            node->prev = NULL;
-            node->next = pool->head;
-            pool->head->prev = node;
-            pool->head = node;
-        }
-        pool->used_size--;
+        reuse_context_node(pool, node);
     }
+}
+
+void context_pool_destroy(context_pool_t *pool)
+{
+    if (pool == NULL) return;
+    struct context_node *current, *next;
+    
+    int len = pool->current_size;
+    current = pool->head;
+    while (len--) {
+        next = current->next;
+        context_pool_delete_node(current);
+        current = next;
+    }
+
+    free(pool);
 }

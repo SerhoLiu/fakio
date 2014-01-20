@@ -2,7 +2,6 @@
 #include <sys/socket.h>
 #include "fakio.h"
 
-#define HAND_DATA_SIZE 1024
 
 static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void *evdata);
 static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *evdata);
@@ -14,7 +13,7 @@ static long handshake_timeout_cb(struct event_loop *loop, void *evdata)
 {   
     context_t *c = evdata;
 
-    if (c->remote_fd == 0) {
+    if (context_get_mask(c) == MASK_CLIENT) {
         fakio_log(LOG_WARNING,"client %d handshake timeout!", c->client_fd);
         context_pool_release(c->pool, c, MASK_CLIENT);
     }
@@ -48,7 +47,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
 
         LOG_FOR_DEBUG("new client %d comming connection", client_fd);
         create_event(loop, client_fd, EV_RDABLE, &client_handshake_cb, c);
-        create_time_event(loop, 1000, &handshake_timeout_cb, c);
+        create_time_event(loop, 10*1000, &handshake_timeout_cb, c);
         break;
     }
 }
@@ -60,7 +59,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     context_t *c = evdata;
 
     while (1) {
-        need = HAND_DATA_SIZE - FBUF_DATA_LEN(c->req);
+        need = HANDSHAKE_SIZE - FBUF_DATA_LEN(c->req);
         int rc = recv(client_fd, FBUF_WRITE_AT(c->req), need, 0);
 
         if (rc < 0) {
@@ -78,7 +77,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
 
         if (rc > 0) {
             FBUF_COMMIT_WRITE(c->req, rc);
-            if (FBUF_DATA_LEN(c->req) < HAND_DATA_SIZE) {
+            if (FBUF_DATA_LEN(c->req) < HANDSHAKE_SIZE) {
                 continue;
             }
             break;
@@ -87,7 +86,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
 
     // 用户认证
     frequest_t req;
-    fakio_request_resolve(FBUF_DATA_AT(c->req), HAND_DATA_SIZE,
+    fakio_request_resolve(FBUF_DATA_AT(c->req), HANDSHAKE_SIZE,
                           &req, FNET_RESOLVE_USER);
 
     c->user = fuser_find_user(c->server->users, req.username, req.name_len);
@@ -99,12 +98,12 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     
     fcrypt_set_key(c->crypto, c->user->key, 256);
 
-    uint8_t buffer[HAND_DATA_SIZE];
+    uint8_t buffer[HANDSHAKE_SIZE];
     
-    fcrypt_decrypt_all(c->crypto, req.IV, HAND_DATA_SIZE-req.rlen,
+    fcrypt_decrypt_all(c->crypto, req.IV, HANDSHAKE_SIZE-req.rlen,
                        FBUF_DATA_SEEK(c->req, req.rlen), buffer+req.rlen);
 
-    r = fakio_request_resolve(buffer+req.rlen, HAND_DATA_SIZE-req.rlen,
+    r = fakio_request_resolve(buffer+req.rlen, HANDSHAKE_SIZE-req.rlen,
                               &req, FNET_RESOLVE_NET);
     if (r != 1) {
         fakio_log(LOG_WARNING,"socks5 request resolve error");
@@ -141,7 +140,7 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     delete_event(loop, client_fd, EV_RDABLE);
     create_event(loop, client_fd, EV_RDABLE, &client_readable_cb, c);
 
-    memset(buffer, 0, HAND_DATA_SIZE);
+    memset(buffer, 0, HANDSHAKE_SIZE);
     return;
 }
 

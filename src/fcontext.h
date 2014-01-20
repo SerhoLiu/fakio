@@ -25,6 +25,7 @@ struct context {
 
 
 void context_set_mask(context_t *c, int mask);
+int context_get_mask(context_t *c);
 
 context_pool_t *context_pool_create(int maxsize);
 void context_pool_destroy(context_pool_t *pool);

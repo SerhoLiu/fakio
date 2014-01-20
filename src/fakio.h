@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include "base/hashmap.h"
+#include "base/fevent.h"
 
 typedef struct fcrypt_ctx fcrypt_ctx_t;
 typedef struct fcrypt_rand fcrypt_rand_t;
@@ -18,6 +19,8 @@ typedef struct context context_t;
 typedef struct fuser fuser_t;
 
 #define BUFSIZE 4088
+#define HANDSHAKE_SIZE 1024
+
 #define MAX_USERNAME 256
 
 #define MAX_HOST_LEN 253
@@ -36,6 +39,7 @@ struct fserver {
     char port[MAX_PORT_LEN];
     context_pool_t *pool;
     hashmap *users;
+    event_loop *loop;
 
     fcrypt_rand_t *r;
 };

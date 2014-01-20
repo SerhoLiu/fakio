@@ -11,6 +11,8 @@ struct fuser {
 
 
 hashmap *fuser_userdict_create(unsigned long size);
+void fuser_userdict_destroy(hashmap *users);
+
 int fuser_add_user(hashmap *users, const char *name, const char *password);
 fuser_t *fuser_find_user(hashmap *users, uint8_t* name, int nlen);
 

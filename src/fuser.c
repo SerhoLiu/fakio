@@ -13,12 +13,21 @@ static int username_compare(const void *desc, int dlen,
     return memcmp(desc, src, slen);
 }
 
+static void user_delete(const void *key, void **value, const void *other)
+{
+    free(*value);
+}
 
 hashmap *fuser_userdict_create(unsigned long size)
 {
     return hashmap_new(size, &username_compare);
 }
 
+void fuser_userdict_destroy(hashmap *users)
+{
+    hashmap_map(users, &user_delete, NULL);
+    hashmap_free(users);
+}
 
 int fuser_add_user(hashmap *users, const char *name, const char *password)
 {

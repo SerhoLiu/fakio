@@ -3,6 +3,18 @@
 #include "fhandler.h"
 #include "fakio.h"
 
+static fserver_t server;
+
+static void signal_handler(int signo)
+{
+    fakio_log(LOG_ERROR, "fserver shutdown....");
+    stop_event_loop(server.loop);
+    context_pool_destroy(server.pool);
+    fuser_userdict_destroy(server.users);
+    fcrypt_rand_destroy(server.r);
+    delete_event_loop(server.loop);
+    exit(1);
+}
 
 int main (int argc, char *argv[])
 {
@@ -11,7 +23,6 @@ int main (int argc, char *argv[])
         exit(1);
     }
 
-    fserver_t server;
     server.users = fuser_userdict_create(4);
     if (server.users == NULL) {
         fakio_log(LOG_ERROR, "Start Error!");
@@ -19,8 +30,6 @@ int main (int argc, char *argv[])
     }
     
     load_config_file(argv[1], &server);
-
-    signal(SIGPIPE, SIG_IGN);
 
     server.r = fcrypt_rand_new();
     if (server.r == NULL) {
@@ -35,9 +44,8 @@ int main (int argc, char *argv[])
         exit(1);
     }
 
-    event_loop *loop;
-    loop = create_event_loop(100);
-    if (loop == NULL) {
+    server.loop = create_event_loop(100);
+    if (server.loop == NULL) {
         fakio_log(LOG_ERROR, "Create Event Loop Error!");
         exit(1);
     }
@@ -55,13 +63,23 @@ int main (int argc, char *argv[])
         exit(1);
     }
 
-    create_event(loop, listen_sd, EV_RDABLE, &server_accept_cb, &server);
+    signal(SIGPIPE, SIG_IGN);
+    
+    struct sigaction act;
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+    act.sa_handler = signal_handler;
+    sigaction(SIGTERM, &act, NULL);
+    
+    //for valgrind
+    sigaction(SIGINT, &act, NULL);
+
+    create_event(server.loop, listen_sd, EV_RDABLE, &server_accept_cb, &server);
 
     fakio_log(LOG_INFO, "Fakio server start...... binding in %s:%s", server.host, server.port);
     fakio_log(LOG_INFO, "Fakio server event loop start, use %s", get_event_api_name());
-    start_event_loop(loop);
-    
-    context_pool_destroy(server.pool);
-    delete_event_loop(loop);
+    start_event_loop(server.loop);
+
+    delete_event_loop(server.loop);
     return 0;
 }

@@ -23,6 +23,11 @@ fcrypt_rand_t *fcrypt_rand_new()
     return r;
 }
 
+void fcrypt_rand_destroy(fcrypt_rand_t *r)
+{
+    free(r);
+}
+
 
 static inline int entropy_reader(uint8_t *bytes, size_t len)
 {

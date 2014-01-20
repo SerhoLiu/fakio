@@ -24,6 +24,12 @@ typedef int compare_key(const void *desc, int dlen,
 
 
 /**
+ * 自定义对 Key,Value 进行 map 的函数，允许对 Value 进行修改
+ */
+typedef void hashmap_map_func(const void *key, void **value,
+                              const void *other);
+
+/**
  * 创建 hashmap
  * @size: 初始大小，应该指定为 2^n，若等于0则使用默认值 512
  */
@@ -56,5 +62,12 @@ void *hashmap_get(const hashmap *map, const void *key, int len);
  */
 void *hashmap_delete(hashmap *map, const void *key, int len);
 
+/**
+ * 将 func 使用到 Hashmap 中的 Key/Value 对上
+ *
+ * Return value: 0 失败, 1 成功
+ */
+int hashmap_map(const hashmap *map, hashmap_map_func *func,
+                const void *other);
 
 #endif 
