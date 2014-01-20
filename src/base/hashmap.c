@@ -146,6 +146,28 @@ void *hashmap_get(const hashmap *map, const void *key, int len)
     }
 }
 
+int hashmap_map(const hashmap *map, hashmap_map_func *func, const void *other)
+{
+    unsigned long i, use, size;
+    map_entry *entry;
+
+    if (map == NULL || func == NULL) {
+        return 0;
+    }
+    
+    size = map->size;
+    use = map->use;
+
+    for (i = 0; (use > 0) && (i < size); i++) {
+        entry = &(map->entrys[i]);
+        if (entry->key) {
+            func(entry->key, &(entry->value), other);
+            use--;
+        } 
+    }
+
+    return 1;
+}
 
 void *hashmap_delete(hashmap *map, const void *key, int len)
 {
