@@ -16,6 +16,7 @@ struct fcrypt_ctx {
 };
 
 fcrypt_rand_t *fcrypt_rand_new();
+void fcrypt_rand_destroy(fcrypt_rand_t *r);
 
 void random_bytes(fcrypt_rand_t *rand, uint8_t *bytes, size_t len);
 
