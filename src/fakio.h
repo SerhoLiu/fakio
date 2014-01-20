@@ -18,6 +18,8 @@ typedef struct context context_t;
 typedef struct fuser fuser_t;
 
 #define BUFSIZE 4088
+#define HANDSHAKE_SIZE 1024
+
 #define MAX_USERNAME 256
 
 #define MAX_HOST_LEN 253

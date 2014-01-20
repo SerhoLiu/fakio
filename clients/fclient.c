@@ -9,7 +9,6 @@
 
 #define REPLY_SIZE 12
 #define MAX_PASSWORD 64
-#define HAND_DATA_SIZE 1024
 
 typedef struct {
     uint8_t username[MAX_USERNAME];
@@ -184,7 +183,7 @@ void socks5_handshake2_cb(struct event_loop *loop, int fd, int mask, void *evdat
             fcrypt_encrypt_all(c->crypto, iv, c_len, buffer+2,
                                FBUF_WRITE_SEEK(c->req, 16+1+client.name_len));
 
-            FBUF_COMMIT_WRITE(c->req, HAND_DATA_SIZE);
+            FBUF_COMMIT_WRITE(c->req, HANDSHAKE_SIZE);
 
             delete_event(loop, client_fd, EV_RDABLE);
             create_event(loop, c->remote_fd, EV_WRABLE, &server_handshake1_cb, c);
