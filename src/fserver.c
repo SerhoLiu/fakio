@@ -8,6 +8,7 @@ static fserver_t server;
 static void signal_handler(int signo)
 {
     fakio_log(LOG_ERROR, "fserver shutdown....");
+    stop_event_loop(server.loop);
     context_pool_destroy(server.pool);
     fuser_userdict_destroy(server.users);
     fcrypt_rand_destroy(server.r);

@@ -108,10 +108,9 @@ static struct context_node *context_pool_add_node(context_pool_t *pool)
 
 static inline void context_pool_delete_node(struct context_node *node)
 {
-    if (node->mask != MASK_NONE) return;
-
     FBUF_FREE(node->c->req);
     FBUF_FREE(node->c->res);
+    free(node->c->crypto);
     free(node->c);
     free(node);
 }
