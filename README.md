@@ -34,4 +34,5 @@ Fakio 由运行在 Linux 系统下的服务端和其它平台的客户端组成�
 MIT LICENSE, see MIT-LICENSE.txt
 
 [1]: https://github.com/clowwindy/shadowsocks
-[2]: http://supervisord.org/
+[2]: https://github.com/SerhoLiu/fakio/blob/master/docs/protocol.txt
+[3]: http://supervisord.org/
