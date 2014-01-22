@@ -37,6 +37,8 @@ typedef struct fuser fuser_t;
 struct fserver {
     char host[MAX_HOST_LEN];
     char port[MAX_PORT_LEN];
+    int connections; /* 最大连接数 */
+
     context_pool_t *pool;
     hashmap *users;
     event_loop *loop;

@@ -23,7 +23,8 @@ int main (int argc, char *argv[])
         exit(1);
     }
 
-    server.users = fuser_userdict_create(4);
+    /* 建立一个用户表，使用的是 HashMap，这里设置初始容量为 16 */
+    server.users = fuser_userdict_create(16);
     if (server.users == NULL) {
         fakio_log(LOG_ERROR, "Start Error!");
         exit(1);
@@ -37,21 +38,35 @@ int main (int argc, char *argv[])
         exit(1);
     }
     
-    /* 初始化 Context */
-    server.pool = context_pool_create(100);
+    /* *
+     * 初始化 context pool，这里通过用户设置的最大连接数
+     * 来确定 pool 容量上限
+     */
+    if (server.connections == 0) {
+        server.connections = INT32_MAX;
+    }
+    if (server.connections < 64) {
+        server.connections = 64;
+    }
+    server.pool = context_pool_create(server.connections);
     if (server.pool == NULL) {
         fakio_log(LOG_ERROR, "Start Error!");
         exit(1);
     }
 
-    server.loop = create_event_loop(100);
+    /* 通过连接数估算一下 event loop fd 最大容量 */
+    int event_size;
+    if (server.connections > (INT32_MAX - 1) / 2) {
+        event_size = INT32_MAX;
+    } else {
+        event_size = server.connections * 2 + 1;
+    }
+    server.loop = create_event_loop(event_size);
     if (server.loop == NULL) {
         fakio_log(LOG_ERROR, "Create Event Loop Error!");
         exit(1);
     }
     
-
-    /* NULL is 0.0.0.0 */
     int listen_sd = fnet_create_and_bind(server.host, server.port);
     
     if (listen_sd < 0) {
