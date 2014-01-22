@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include "base/fevent.h"
 
-#define MIN_MAXSIZE 16
+#define MIN_MAXSIZE 64
 
 struct context_node {
     int mask;

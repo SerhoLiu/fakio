@@ -40,6 +40,7 @@ void server_accept_cb(struct event_loop *loop, int fd, int mask, void *evdata)
         if (c == NULL) {
             fakio_log(LOG_WARNING,"Client %d Can't get context", client_fd);
             close(client_fd);
+            return;
         }
         c->client_fd = client_fd;
         c->loop = loop;

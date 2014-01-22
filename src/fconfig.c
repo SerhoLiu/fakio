@@ -14,6 +14,8 @@ static int handler(void* user, const char* section, const char* name,
             strcpy(server->host, value);
         } else if (strcmp("port", name) == 0) {
             strcpy(server->port, value);
+        } else if (strcmp("connections", name) == 0) {
+            server->connections = atoi(value);
         } else {
             return 0;
         }
