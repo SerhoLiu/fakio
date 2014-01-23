@@ -8,9 +8,19 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"strconv"
+)
+
+const (
+	TestName   = "SErHo"
+	TestPass   = "123456"
+	TestServer = "localhost:8888"
 )
 
 //crypto
@@ -22,22 +32,15 @@ func stringToKey(str string) (key []byte) {
 }
 
 type Cipher struct {
-	enc cipher.Stream
-	dec cipher.Stream
+	handEnc cipher.Stream
+	handDec cipher.Stream
+	enc     cipher.Stream
+	dec     cipher.Stream
 }
 
-func (c *Cipher) New(bytes []byte) (err error) {
+func NewCipher() (c *Cipher, err error) {
 
-	if len(bytes) != 48 {
-		err = errors.New("bytes length must 48")
-		return
-	}
-	block, err := aes.NewCipher(bytes[0:16])
-	if err != nil {
-		return
-	}
-	c.enc = cipher.NewCFBEncrypter(block, bytes[16:32])
-	c.dec = cipher.NewCFBDecrypter(block, bytes[32:48])
+	c = new(Cipher)
 
 	return
 }
@@ -51,16 +54,19 @@ func (c *Cipher) Decrypt(dst, src []byte) {
 }
 
 // Connection Context
-type Context struct {
+type FakioConn struct {
 	net.Conn
 	*Cipher
 }
 
-func NewConn(cn net.Conn, cipher *Cipher) *Conn {
-	return &Conn{cn, cipher}
+func NewFakioConn(cn net.Conn, cipher *Cipher) *FakioConn {
+	return &FakioConn{cn, cipher}
 }
 
-func BuildClientReq(addr, username string) (buf []byte, err error) {
+func BuildClientReq(addr string) (buf []byte, err error) {
+
+	buf = make([]byte, 1024)
+
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, errors.New(
@@ -73,77 +79,73 @@ func BuildClientReq(addr, username string) (buf []byte, err error) {
 	}
 
 	hostLen := len(host)
-	l := 1 + 1 + hostLen + 2 // addrType + lenByte + address + port
-	buf = make([]byte, l)
-	buf[0] = 3             // 3 means the address is domain name
-	buf[1] = byte(hostLen) // host address length  followed by host address
-	copy(buf[2:], host)
-	binary.BigEndian.PutUint16(buf[2+hostLen:2+hostLen+2], uint16(port))
-	return
+	nameLen := len(TestName)
+
+	index := 16 + 1 + nameLen
+	buf[16] = byte(nameLen)
+	copy(buf[17:index], TestName)
+	buf[index] = 0x5
+	buf[index+1] = 0x3
+	buf[index+2] = byte(hostLen)
+	copy(buf[index+3:], host)
+	binary.BigEndian.PutUint16(buf[index+3+hostLen:], uint16(port))
+
+	return buf, nil
 }
 
-// This is intended for use by users implementing a local socks proxy.
-// rawaddr shoud contain part of the data in socks request, starting from the
-// ATYP field. (Refer to rfc1928 for more information.)
-func DialWithRawAddr(rawaddr []byte, server string, cipher *Cipher) (c *Conn, err error) {
+func FakioDial(req []byte, server string, cipher *Cipher) (c *FakioConn, err error) {
 	conn, err := net.Dial("tcp", server)
 	if err != nil {
 		return
 	}
-	c = NewConn(conn, cipher)
-	if _, err = c.Write(rawaddr); err != nil {
+	c = NewFakioConn(conn, cipher)
+	if _, err = c.Write(req); err != nil {
 		c.Close()
 		return nil, err
 	}
 	return
 }
 
-// addr should be in the form of host:port
-func Dial(addr, server string, cipher *Cipher) (c *Conn, err error) {
-	ra, err := RawAddr(addr)
+func Dial(addr, server string, cipher *Cipher) (c *FakioConn, err error) {
+	ra, err := BuildClientReq(addr)
 	if err != nil {
 		return
 	}
-	return DialWithRawAddr(ra, server, cipher)
+	return FakioDial(ra, server, cipher)
 }
 
-func (c *Conn) Read(b []byte) (n int, err error) {
-	if c.dec == nil {
-		iv := make([]byte, c.info.ivLen)
+func (c *FakioConn) Read(b []byte) (n int, err error) {
+
+	if c.handDec == nil {
+		iv := make([]byte, 16)
 		if _, err = io.ReadFull(c.Conn, iv); err != nil {
 			return
 		}
-		if err = c.initDecrypt(iv); err != nil {
-			return
+		key := stringToKey(TestPass)
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return 0, err
 		}
-	}
-	cipherData := make([]byte, len(b))
-	n, err = c.Conn.Read(cipherData)
-	if n > 0 {
-		c.decrypt(b[0:n], cipherData[0:n])
+		c.handEnc = cipher.NewCFBEncrypter(block, iv)
+		n, err = c.Conn.Read(b)
+		c.handEnc.XORKeyStream(b, b)
+		return n, err
 	}
 	return
 }
 
-func (c *Conn) Write(b []byte) (n int, err error) {
-	var cipherData []byte
-	dataStart := 0
-	if c.enc == nil {
-		var iv []byte
-		iv, err = c.initEncrypt()
+func (c *FakioConn) Write(b []byte) (n int, err error) {
+	if c.handEnc == nil {
+		key := stringToKey(TestPass)
+		block, err := aes.NewCipher(key)
 		if err != nil {
-			return
+			return 0, err
 		}
-		// Put initialization vector in buffer, do a single write to send both
-		// iv and data.
-		cipherData = make([]byte, len(b)+len(iv))
-		copy(cipherData, iv)
-		dataStart = len(iv)
-	} else {
-		cipherData = make([]byte, len(b))
+		c.handEnc = cipher.NewCFBEncrypter(block, b[0:16])
+		c.handEnc.XORKeyStream(b, b)
+		n, err := c.Conn.Write(b)
+		return n, err
 	}
-	c.encrypt(cipherData[dataStart:], b)
-	n, err = c.Conn.Write(cipherData)
 	return
 }
 
@@ -154,17 +156,10 @@ func main() {
 	var b bytes.Buffer
 	req.Write(&b)
 
-	var cipher Cipher
+	cipher, _ := NewCipher()
 
-	bytes := make([]byte, 48)
-
-	err := cipher.New(bytes)
+	_, err := Dial("localhost:8000", TestServer, cipher)
 	if err != nil {
 		fmt.Println(err)
-		return
 	}
-
-	cipher.Encrypt(b.Bytes(), b.Bytes())
-	cipher.Decrypt(b.Bytes(), b.Bytes())
-	fmt.Println(b.String())
 }
