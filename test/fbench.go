@@ -4,7 +4,7 @@
 package main
 
 import (
-	"bytes"
+	//"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
@@ -39,7 +39,6 @@ type Cipher struct {
 }
 
 func (c *Cipher) InitCrypt(bytes []byte) error {
-
 	block, err := aes.NewCipher(bytes[32:])
 	if err != nil {
 		return err
@@ -112,11 +111,12 @@ func FakioDial(req []byte, server string, cipher *Cipher) (c *FakioConn, err err
 	return
 }
 
-func Dial(addr, server string, cipher *Cipher) (c *FakioConn, err error) {
+func Dial(addr, server string) (c *FakioConn, err error) {
 	ra, err := BuildClientReq(addr)
 	if err != nil {
 		return
 	}
+	cipher := new(Cipher)
 	return FakioDial(ra, server, cipher)
 }
 
@@ -133,11 +133,30 @@ func (c *FakioConn) Read(b []byte) (n int, err error) {
 			return 0, err
 		}
 		c.handEnc = cipher.NewCFBEncrypter(block, iv)
-		n, err = c.Conn.Read(b)
-		c.handEnc.XORKeyStream(b, b)
-		return n, err
+
+		buf := make([]byte, 48)
+		if _, err = io.ReadFull(c.Conn, buf); err != nil {
+			return 0, err
+		}
+
+		fmt.Println("48 bytes crypted:")
+		fmt.Println(buf)
+
+		palin := make([]byte, 48)
+		c.handEnc.XORKeyStream(palin, buf)
+
+		fmt.Println("48 bytes encrypted:")
+		fmt.Println(palin)
+
+		c.InitCrypt(palin)
+
+		return 0, err
 	}
-	return
+
+	n, err = c.Conn.Read(b)
+	fmt.Printf("I'm read: %s", string(b))
+	c.Decrypt(b[0:n], b[0:n])
+	return n, err
 }
 
 func (c *FakioConn) Write(b []byte) (n int, err error) {
@@ -151,40 +170,39 @@ func (c *FakioConn) Write(b []byte) (n int, err error) {
 
 		// 22 = iv + username
 		c.handEnc.XORKeyStream(b[22:], b[22:])
-		n, err := c.Conn.Write(b)
+		n, err = c.Conn.Write(b)
 		return n, err
 	}
-	return
+	fmt.Printf("I'm write: %s", string(b))
+	c.Encrypt(b, b)
+	fmt.Println(b[0:100])
+	n, err = c.Conn.Write(b)
+	return n, err
 }
 
 func main() {
-	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
-	req.Header.Set("User-Agent", "fbench")
 
-	var b bytes.Buffer
-	req.Write(&b)
+	tr := &http.Transport{
+		Dial: func(_, _ string) (net.Conn, error) {
+			return Dial("localhost:8000", TestServer)
+		},
+	}
 
-	cipher := new(Cipher)
+	client := &http.Client{Transport: tr}
 
-	conn, err := Dial("localhost:8000", TestServer, cipher)
+	resp, err := client.Get("http://localhost:8000/test")
 	if err != nil {
 		fmt.Println(err)
 	}
-
-	bytes := make([]byte, 48)
-	_, err = conn.Read(bytes)
-	if err != nil {
-		fmt.Println(err)
+	buf := make([]byte, 8192)
+	for err == nil {
+		_, err = resp.Body.Read(buf)
+		fmt.Println(string(buf))
+	}
+	if err != io.EOF {
+		fmt.Printf("Read response error: %v\n", err)
+	} else {
+		err = nil
 	}
 
-	err = conn.InitCrypt(bytes)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	conn.Write(b.Bytes())
-
-	reqs := make([]byte, 1024)
-	conn.Read(reqs)
-	fmt.Println(reqs)
 }

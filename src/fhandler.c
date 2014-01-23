@@ -132,6 +132,11 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     uint8_t bytes[64];
     memcpy(bytes, buffer, 64);
     fcrypt_encrypt_all(c->crypto, bytes, 48, buffer+16, buffer+16);
+    int i;
+    printf("48 bytes en:\n");
+    for (i = 0; i < 48; i++)
+        printf("%d ", buffer[16+i]);
+    printf("\n");
 
     //TODO:
     send(client_fd, buffer, 64, 0);
@@ -171,7 +176,14 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
         break;
     }
     
+    int i;
+    for (i = 0; i < 100; i++) {
+        printf("%d ", c->req->buffer[i]);
+    }
+    printf("\n");
+
     fcrypt_decrypt(c->crypto, c->req);
+    printf("from client read: \n %s \n", c->req->buffer);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
 }

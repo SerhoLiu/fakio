@@ -2,6 +2,7 @@
 #define _FAKIO_CRYPT_H_
 
 #include "fakio.h"
+#include <stdio.h>
 #include "base/aes.h"
 
 
@@ -54,6 +55,11 @@ static inline int fcrypt_ctx_init(fcrypt_ctx_t *ctx, uint8_t bytes[48])
     memcpy(ctx->key, bytes+32, 16);
 
     ctx->e_pos = ctx->d_pos = 0;
+    int i;
+    printf("48 bytes:\n");
+    for (i = 0; i < 48; i++)
+        printf("%d ", bytes[i]);
+    printf("\n");
     return fcrypt_set_key(ctx, ctx->key, 128);
 }
 
