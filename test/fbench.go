@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	TestName   = "SErHo"
+	TestName   = "serho"
 	TestPass   = "123456"
 	TestServer = "localhost:8888"
 )
@@ -38,11 +38,17 @@ type Cipher struct {
 	dec     cipher.Stream
 }
 
-func NewCipher() (c *Cipher, err error) {
+func (c *Cipher) InitCrypt(bytes []byte) error {
 
-	c = new(Cipher)
+	block, err := aes.NewCipher(bytes[32:])
+	if err != nil {
+		return err
+	}
 
-	return
+	c.enc = cipher.NewCFBEncrypter(block, bytes[0:16])
+	c.dec = cipher.NewCFBDecrypter(block, bytes[16:32])
+
+	return nil
 }
 
 func (c *Cipher) Encrypt(dst, src []byte) {
@@ -142,7 +148,9 @@ func (c *FakioConn) Write(b []byte) (n int, err error) {
 			return 0, err
 		}
 		c.handEnc = cipher.NewCFBEncrypter(block, b[0:16])
-		c.handEnc.XORKeyStream(b, b)
+
+		// 22 = iv + username
+		c.handEnc.XORKeyStream(b[22:], b[22:])
 		n, err := c.Conn.Write(b)
 		return n, err
 	}
@@ -156,10 +164,27 @@ func main() {
 	var b bytes.Buffer
 	req.Write(&b)
 
-	cipher, _ := NewCipher()
+	cipher := new(Cipher)
 
-	_, err := Dial("localhost:8000", TestServer, cipher)
+	conn, err := Dial("localhost:8000", TestServer, cipher)
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	bytes := make([]byte, 48)
+	_, err = conn.Read(bytes)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	err = conn.InitCrypt(bytes)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	conn.Write(b.Bytes())
+
+	reqs := make([]byte, 1024)
+	conn.Read(reqs)
+	fmt.Println(reqs)
 }
