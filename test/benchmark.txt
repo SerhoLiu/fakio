@@ -26,6 +26,32 @@
   Requests per second:  2169.4970
 
       Fakio:
+        Total Request:  10000 total, 10000 susceed, 0 failed.
+           Total time:  10.7724 secs.
+         Average time:  10.7148 secs.
+     Time per request:  10.7148 secs.
+  Requests per second:  928.2957
+
+    2. -c 1000 -n 10
+
+      直接：
+        Total Request:  10000 total, 10000 susceed, 0 failed.
+           Total time:  4.9586 secs.
+         Average time:  2.9651 secs.
+     Time per request:  2.9651 secs.
+  Requests per second:  2016.6903
+
+      Fakio:
+        Total Request:  10000 total, 10000 susceed, 0 failed.
+           Total time:  11.6412 secs.
+         Average time:  7.2779 secs.
+     Time per request:  7.2779 secs.
+  Requests per second:  859.0194
+
+    3. -c 1000 -n 1000
+    
+
+
         
 
     
