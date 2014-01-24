@@ -180,8 +180,6 @@ func clients(r chan Result, client *http.Client) {
 		r <- result
 	}()
 
-	//var oks, errs int64
-
 	for i := 0; i < N; i++ {
 		t, err := doGet(client)
 		result.t += t
