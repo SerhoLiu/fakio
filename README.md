@@ -15,7 +15,7 @@ Fakio 由运行在 Linux 系统下的服务端和其它平台的客户端组成�
 > 3. 参照 doc/fakio.conf 进行配置
 > 4. On server: ./fakio-server path/your/fakio.conf
 
-不支持守护进程方式，为了实现开机自启动和挂掉后重新启动，可以使用 [Supervisord][3] 来管理，配置可以参考 `doc/supervisord.conf`。
+不支持守护进程方式，为了实现开机自启动和挂掉后重新启动，可以使用 [Supervisord][3] 来管理，配置可以参考 `tools/supervisord.conf`。
 
 #### 客户端
 
