@@ -129,14 +129,10 @@ static void client_handshake_cb(struct event_loop *loop, int fd, int mask, void 
     FBUF_REST(c->res);
 
     random_bytes(c->server->r, buffer, 64);
+
     uint8_t bytes[64];
     memcpy(bytes, buffer, 64);
     fcrypt_encrypt_all(c->crypto, bytes, 48, buffer+16, buffer+16);
-    int i;
-    printf("48 bytes en:\n");
-    for (i = 0; i < 48; i++)
-        printf("%d ", buffer[16+i]);
-    printf("\n");
 
     //TODO:
     send(client_fd, buffer, 64, 0);
