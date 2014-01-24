@@ -171,15 +171,8 @@ static void client_readable_cb(struct event_loop *loop, int fd, int mask, void *
         
         break;
     }
-    
-    int i;
-    for (i = 0; i < 100; i++) {
-        printf("%d ", c->req->buffer[i]);
-    }
-    printf("\n");
 
     fcrypt_decrypt(c->crypto, c->req);
-    printf("from client read: \n %s \n", c->req->buffer);
     delete_event(loop, fd, EV_RDABLE);
     create_event(loop, c->remote_fd, EV_WRABLE, &remote_writable_cb, c);
 }
