@@ -11,6 +11,9 @@
     3. fakio-server 中对 context_list, event_loop 大小的设置
        会对结果产生影响，如果并发数大的话，需要调大 connections
     4. sudo sh -c "ulimit -n 65535 && exec su $LOGNAME"
+    5. TCP 参数调整： net.ipv4.tcp_syncookies = 1
+                    net.ipv4.tcp_tw_reuse = 1
+                    net.ipv4.tcp_tw_recycle = 1
 
 测试用例以及相应结果:
     
@@ -49,6 +52,23 @@
   Requests per second:  859.0194
 
     3. -c 1000 -n 1000
+
+      直接：
+        Total Request:  1000000 total, 999969 susceed, 31 failed.
+           Total time:  378.2680 secs.
+         Average time:  360.3685 secs.
+     Time per request:  360.3685 secs.
+  Requests per second:  2643.6286
+
+
+
+      Fakio:
+        Total Request:  1000000 total, 1000000 susceed, 0 failed.
+           Total time:  804.5097 secs.
+         Average time:  783.8787 secs.
+     Time per request:  783.8787 secs.
+  Requests per second:  1242.9931
+
     
 
 
