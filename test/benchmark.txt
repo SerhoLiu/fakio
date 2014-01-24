@@ -14,19 +14,18 @@
 
 测试用例以及相应结果:
     
-    1. GET http://localhost:8000/ 首页大小为 26.0Kb
+    GET http://localhost:6060/doc/
 
-       i. -t 30 -c 200:
-            Speed=76476 pages/min, 33289404 bytes/sec.
-            Requests: 38238 susceed, 0 failed.
-      ii. -t 30 -c 1000:
-            Speed=72876 pages/min, 31239700 bytes/sec.
-            Requests: 35979 susceed, 459 failed.
+    1. -c 10 -n 1000
 
-    2. GET http://localhost:8000/1.tar.gz 大小为 26.6Mb
-       i. -t 30 -c 200:
-            Speed=34006 pages/min, 43638320 bytes/sec.
-            Requests: 17003 susceed, 0 failed.
-      ii. -t 30 -c 100:
-            因为文件大，所以测试是需要调整很多系统参数，而且 Web 服务器已经不堪重负，
-            换一个服务器再测
+      直接：
+        Total Request:  10000 total, 10000 susceed, 0 failed.
+           Total time:  4.6094 secs.
+         Average time:  4.5867 secs.
+     Time per request:  4.5867 secs.
+  Requests per second:  2169.4970
+
+      Fakio:
+        
+
+    
