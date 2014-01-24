@@ -4,7 +4,6 @@
 package main
 
 import (
-	//"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
@@ -12,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
@@ -32,22 +32,20 @@ func stringToKey(str string) (key []byte) {
 }
 
 type Cipher struct {
-	handEnc cipher.Stream
-	handDec cipher.Stream
-	enc     cipher.Stream
-	dec     cipher.Stream
+	enc cipher.Stream
+	dec cipher.Stream
 }
 
-func (c *Cipher) InitCrypt(bytes []byte) error {
+func NewCipher(bytes []byte) (c *Cipher, err error) {
 	block, err := aes.NewCipher(bytes[32:])
 	if err != nil {
-		return err
+		return c, err
 	}
 
-	c.enc = cipher.NewCFBEncrypter(block, bytes[0:16])
-	c.dec = cipher.NewCFBDecrypter(block, bytes[16:32])
+	enc := cipher.NewCFBEncrypter(block, bytes[0:16])
+	dec := cipher.NewCFBDecrypter(block, bytes[16:32])
 
-	return nil
+	return &Cipher{enc, dec}, nil
 }
 
 func (c *Cipher) Encrypt(dst, src []byte) {
@@ -64,23 +62,19 @@ type FakioConn struct {
 	*Cipher
 }
 
-func NewFakioConn(cn net.Conn, cipher *Cipher) *FakioConn {
-	return &FakioConn{cn, cipher}
-}
-
-func BuildClientReq(addr string) (buf []byte, err error) {
+func buildClientReq(addr string) (buf []byte, err error) {
 
 	buf = make([]byte, 1024)
 
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, errors.New(
-			fmt.Sprintf("shadowsocks: address error %s %v", addr, err))
+			fmt.Sprintf("fakio: address error %s %v", addr, err))
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		return nil, errors.New(
-			fmt.Sprintf("shadowsocks: invalid port %s", addr))
+			fmt.Sprintf("fakio: invalid port %s", addr))
 	}
 
 	hostLen := len(host)
@@ -98,85 +92,57 @@ func BuildClientReq(addr string) (buf []byte, err error) {
 	return buf, nil
 }
 
-func FakioDial(req []byte, server string, cipher *Cipher) (c *FakioConn, err error) {
+func FakioDial(addr, server string) (c *FakioConn, err error) {
+	//fmt.Println("FakioDial")
 	conn, err := net.Dial("tcp", server)
 	if err != nil {
-		return
-	}
-	c = NewFakioConn(conn, cipher)
-	if _, err = c.Write(req); err != nil {
-		c.Close()
 		return nil, err
 	}
-	return
-}
 
-func Dial(addr, server string) (c *FakioConn, err error) {
-	ra, err := BuildClientReq(addr)
+	//handshake
+	req, err := buildClientReq(addr)
 	if err != nil {
-		return
+		return nil, err
 	}
-	cipher := new(Cipher)
-	return FakioDial(ra, server, cipher)
+
+	key := stringToKey(TestPass)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	enc := cipher.NewCFBEncrypter(block, req[0:16])
+	// 22 = iv + username
+	enc.XORKeyStream(req[22:], req[22:])
+	if _, err := conn.Write(req); err != nil {
+		return nil, errors.New("hanshake to server error")
+	}
+
+	hand := make([]byte, 64)
+	if _, err := conn.Read(hand); err != nil {
+		return nil, errors.New("hanshake from server error")
+	}
+
+	dec := cipher.NewCFBDecrypter(block, hand[0:16])
+	dec.XORKeyStream(hand[16:], hand[16:])
+
+	cipher, err := NewCipher(hand[16:])
+
+	return &FakioConn{conn, cipher}, nil
 }
 
 func (c *FakioConn) Read(b []byte) (n int, err error) {
 
-	if c.handDec == nil {
-		iv := make([]byte, 16)
-		if _, err = io.ReadFull(c.Conn, iv); err != nil {
-			return
-		}
-		key := stringToKey(TestPass)
-		block, err := aes.NewCipher(key)
-		if err != nil {
-			return 0, err
-		}
-		c.handEnc = cipher.NewCFBEncrypter(block, iv)
-
-		buf := make([]byte, 48)
-		if _, err = io.ReadFull(c.Conn, buf); err != nil {
-			return 0, err
-		}
-
-		fmt.Println("48 bytes crypted:")
-		fmt.Println(buf)
-
-		palin := make([]byte, 48)
-		c.handEnc.XORKeyStream(palin, buf)
-
-		fmt.Println("48 bytes encrypted:")
-		fmt.Println(palin)
-
-		c.InitCrypt(palin)
-
-		return 0, err
-	}
-
 	n, err = c.Conn.Read(b)
-	fmt.Printf("I'm read: %s", string(b))
 	c.Decrypt(b[0:n], b[0:n])
+
 	return n, err
 }
 
 func (c *FakioConn) Write(b []byte) (n int, err error) {
-	if c.handEnc == nil {
-		key := stringToKey(TestPass)
-		block, err := aes.NewCipher(key)
-		if err != nil {
-			return 0, err
-		}
-		c.handEnc = cipher.NewCFBEncrypter(block, b[0:16])
 
-		// 22 = iv + username
-		c.handEnc.XORKeyStream(b[22:], b[22:])
-		n, err = c.Conn.Write(b)
-		return n, err
-	}
-	fmt.Printf("I'm write: %s", string(b))
 	c.Encrypt(b, b)
-	fmt.Println(b[0:100])
 	n, err = c.Conn.Write(b)
+
 	return n, err
 }
 
@@ -184,21 +150,21 @@ func main() {
 
 	tr := &http.Transport{
 		Dial: func(_, _ string) (net.Conn, error) {
-			return Dial("localhost:8000", TestServer)
+			return FakioDial("localhost:8000", TestServer)
 		},
 	}
 
 	client := &http.Client{Transport: tr}
 
-	resp, err := client.Get("http://localhost:8000/test")
+	resp, err := client.Get("http://localhost:8000/")
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
-	buf := make([]byte, 8192)
-	for err == nil {
-		_, err = resp.Body.Read(buf)
-		fmt.Println(string(buf))
-	}
+
+	buf, err := ioutil.ReadAll(resp.Body)
+	fmt.Println(string(buf))
+
 	if err != io.EOF {
 		fmt.Printf("Read response error: %v\n", err)
 	} else {
