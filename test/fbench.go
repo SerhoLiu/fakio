@@ -220,7 +220,7 @@ func run(client *http.Client) {
 	fmt.Printf("           Total time:\t%4.4f secs.\n", total.Seconds())
 	fmt.Printf("         Average time:\t%4.4f secs.\n", allTime.Seconds()/float64(C))
 	fmt.Printf("     Time per request:\t%4.4f secs.\n", allTime.Seconds()/float64(C))
-	fmt.Printf("  Requests per second:\t%4.4f\n", float64(N*C)/total.Seconds())
+	fmt.Printf("  Requests per second:\t%4.4f\n", float64(okReq)/total.Seconds())
 }
 
 func main() {

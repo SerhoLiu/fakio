@@ -1,16 +1,16 @@
-注：在进行压力测试时，关闭了加密功能，所以测试结果和实际结果有所偏差
-
 测试环境：
     1. Ubuntu 12.04 x86_64
     2. CPU: Intel(R) Core(TM)2 Duo CPU P7450  @ 2.13GHz
     3. 内存: 4016236 kB
 
-测试网站：本地使用 php -S localhost:8000
+测试网站：本地使用 godoc -http=:6060
 
 测试说明：
-    1. ./fbench -t <time:秒> -c <clients>
-    2. fakio-server 中对 context_list, event_loop 大小的设置
-       会对结果产生影响，如果并发数大的话，需要调大 event_loop size
+    1. ./fbench -c <clients> -n <requests> url
+    2. 上面加上 -f 参数就会使用 Fakio 访问，通过和直接访问的结果进行对比，可以得出结果
+    3. fakio-server 中对 context_list, event_loop 大小的设置
+       会对结果产生影响，如果并发数大的话，需要调大 connections
+    4. sudo sh -c "ulimit -n 65535 && exec su $LOGNAME"
 
 测试用例以及相应结果:
     
