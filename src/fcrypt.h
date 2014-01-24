@@ -2,6 +2,7 @@
 #define _FAKIO_CRYPT_H_
 
 #include "fakio.h"
+#include <stdio.h>
 #include "base/aes.h"
 
 
