@@ -16,7 +16,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	//"sync"
 	"time"
 )
 
@@ -234,7 +233,7 @@ func main() {
 	flag.Parse()
 
 	if len(flag.Args()) != 1 {
-		fmt.Println("Usage: fbench -c clients -t times url")
+		fmt.Println("Usage: fbench -f -c clients -n requests url")
 		return
 	}
 
