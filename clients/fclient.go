@@ -13,6 +13,7 @@ import (
 	//"flag"
 	"fmt"
 	"io"
+	//"io/ioutil"
 	"log"
 	"net"
 	//"net/http"
@@ -223,7 +224,10 @@ func socks5Handshake(conn net.Conn) (req []byte, err error) {
 func handleConnection(client net.Conn) {
 	log.Println("new connection....")
 
-	defer client.Close()
+	defer func() {
+		fmt.Println("client close....")
+		client.Close()
+	}()
 
 	req, err := socks5Handshake(client)
 	if err != nil {
@@ -236,15 +240,22 @@ func handleConnection(client net.Conn) {
 		log.Println("Failed connect to fakio server: ", err)
 		return
 	}
-	defer remote.Close()
+	defer func() {
+		fmt.Println("remote close")
+		remote.Close()
+	}()
 
 	go func(dst, src net.Conn) {
+		defer func() {
+			fmt.Println("remote close on li")
+			remote.Close()
+		}()
 		buf := make([]byte, 1024)
 
 		for {
-			fmt.Println(245)
+			//fmt.Println(245)
 			n, err := src.Read(buf)
-			fmt.Println("247:", err, " ", n)
+
 			if n > 0 {
 				if _, err = dst.Write(buf[0:n]); err != nil {
 					log.Println("write to remote:", err)
@@ -252,18 +263,18 @@ func handleConnection(client net.Conn) {
 				}
 			}
 			if err != nil {
+				fmt.Println("247:", err, " ", n)
 				break
 			}
 		}
-	}(client, remote)
+	}(remote, client)
+
+	buf := make([]byte, 1024)
 
 	for {
-
-		buf := make([]byte, 1024)
-
-		fmt.Println(256)
+		//fmt.Println(265)
 		n, err := remote.Read(buf)
-		fmt.Println("259:", err, " ", n)
+
 		if n > 0 {
 			if _, err = client.Write(buf[0:n]); err != nil {
 				log.Println("write to client:", err)
@@ -271,6 +282,7 @@ func handleConnection(client net.Conn) {
 			}
 		}
 		if err != nil {
+			fmt.Println("259:", err, " ", n)
 			break
 		}
 	}
@@ -296,7 +308,7 @@ func run(listenAddr string) {
 }
 
 func main() {
-	fclient = Fclient{"serho", "123456", "localhost:8888", "localhost:1070"}
-	localReply = []byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x42}
+	fclient = Fclient{"serho", "123456", "localhost:8888", "127.0.0.1:1080"}
+	localReply = []byte{0x05, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x7f, 0x08, 0x43}
 	run(fclient.local)
 }
