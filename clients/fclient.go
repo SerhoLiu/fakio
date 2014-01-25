@@ -225,7 +225,6 @@ func handleConnection(client net.Conn) {
 	log.Println("new connection....")
 
 	defer func() {
-		fmt.Println("client close....")
 		client.Close()
 	}()
 
@@ -241,19 +240,16 @@ func handleConnection(client net.Conn) {
 		return
 	}
 	defer func() {
-		fmt.Println("remote close")
 		remote.Close()
 	}()
 
 	go func(dst, src net.Conn) {
 		defer func() {
-			fmt.Println("remote close on li")
 			remote.Close()
 		}()
 		buf := make([]byte, 1024)
 
 		for {
-			//fmt.Println(245)
 			n, err := src.Read(buf)
 
 			if n > 0 {
@@ -263,7 +259,6 @@ func handleConnection(client net.Conn) {
 				}
 			}
 			if err != nil {
-				fmt.Println("247:", err, " ", n)
 				break
 			}
 		}
@@ -272,7 +267,6 @@ func handleConnection(client net.Conn) {
 	buf := make([]byte, 1024)
 
 	for {
-		//fmt.Println(265)
 		n, err := remote.Read(buf)
 
 		if n > 0 {
