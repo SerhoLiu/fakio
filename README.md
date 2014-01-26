@@ -21,7 +21,7 @@ Fakio 由运行在 Linux 系统下的服务端和其它平台的客户端组成�
 
 1. 现在实现了 Linux 系统下的客户端，`make fakio-client` 即可，配置文件见 `clients/config.conf`，客户端通过 SOCKS5 协议和本地程序进行通信。
 
-2. 其它系统客户端计划中
+2. 简单的使用 Golang 写的客户端，见 `clients/fclient.go`，配置文件为 `clients/config.json`，也是通过 SOCKS5 和本地程序进行通信
 
 ### 注意事项
 > 1. 协议和 Shadowsocks 有所差异，所以不兼容其客户端
