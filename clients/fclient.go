@@ -8,27 +8,29 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
-	//"encoding/binary"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	//"flag"
 	"fmt"
 	"io"
-	//"io/ioutil"
+	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	//"net/http"
 	//"net/url"
-	//"strconv"
+	"strconv"
 	//"strings"
 	//"time"
 )
 
 type Fclient struct {
-	username string
-	password string
+	UserName string
+	PassWord string
 
-	server string
-	local  string
+	Server string
+	Local  string
 }
 
 var fclient Fclient
@@ -80,7 +82,7 @@ func FakioDial(server string, req []byte) (c *FakioConn, err error) {
 	}
 
 	//handshake
-	key := stringToKey(fclient.password)
+	key := stringToKey(fclient.PassWord)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -133,10 +135,10 @@ func buildFakioReq(buf []byte) (req []byte, err error) {
 	}
 	copy(req, iv)
 
-	nameLen := len(fclient.username)
+	nameLen := len(fclient.UserName)
 	index := 16 + 1 + nameLen
 	req[16] = byte(nameLen)
-	copy(req[17:index], fclient.username)
+	copy(req[17:index], fclient.UserName)
 	req[index] = 0x5
 	copy(req[index+1:], buf[3:])
 
@@ -206,9 +208,21 @@ func socks5Handshake(conn net.Conn) (req []byte, err error) {
 
 	req, err = buildFakioReq(buf)
 	if err != nil {
-		fmt.Println("207")
 		return
 	}
+
+	//log request
+	var host string
+	port := binary.BigEndian.Uint16(buf[reqLen-2 : reqLen])
+	if buf[3] == 0x01 {
+		host = net.IP(buf[4:8]).String()
+	}
+	if buf[3] == 0x03 {
+		host = string(buf[5 : 5+int(buf[4])])
+	}
+
+	addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
+	log.Printf("connect %s", addr)
 
 	//SOCKS5 Replies
 	_, err = conn.Write(localReply)
@@ -234,7 +248,7 @@ func handleConnection(client net.Conn) {
 		return
 	}
 
-	remote, err := FakioDial(fclient.server, req)
+	remote, err := FakioDial(fclient.Server, req)
 	if err != nil {
 		log.Println("Failed connect to fakio server: ", err)
 		return
@@ -245,6 +259,7 @@ func handleConnection(client net.Conn) {
 
 	go func(dst, src net.Conn) {
 		defer func() {
+			client.Close()
 			remote.Close()
 		}()
 		buf := make([]byte, 1024)
@@ -301,8 +316,73 @@ func run(listenAddr string) {
 	}
 }
 
+func getConfig(path string, fclient *Fclient) (err error) {
+	file, err := os.Open(path) // For read access.
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(data, fclient)
+	return
+}
+
+func buildReply(addr string) (buf []byte, err error) {
+
+	buf = make([]byte, 264)
+
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, errors.New(
+			fmt.Sprintf("fakio: address error %s %v", addr, err))
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, errors.New(
+			fmt.Sprintf("fakio: invalid port %s", addr))
+	}
+
+	buf[0] = 0x05
+	buf[1] = 0x00
+	buf[2] = 0x00
+
+	ip := net.ParseIP(host).To4()
+	if ip != nil {
+		buf[3] = 0x01
+		buf[4] = ip[3]
+		buf[5] = ip[2]
+		buf[6] = ip[1]
+		buf[7] = ip[0]
+		binary.BigEndian.PutUint16(buf[8:], uint16(port))
+		return buf[0:10], nil
+	}
+
+	hostLen := len(host)
+	buf[3] = 0x03
+	buf[4] = byte(hostLen)
+
+	copy(buf[5:], host)
+	binary.BigEndian.PutUint16(buf[5+hostLen:], uint16(port))
+
+	return buf[0 : 7+hostLen], nil
+}
+
 func main() {
-	fclient = Fclient{"serho", "123456", "localhost:8888", "127.0.0.1:1080"}
-	localReply = []byte{0x05, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x7f, 0x08, 0x43}
-	run(fclient.local)
+	if err := getConfig("config.json", &fclient); err != nil {
+		log.Fatalf("get config error: %s", err)
+	}
+	log.Printf("use config: %s", fclient)
+
+	var err error
+	localReply, err = buildReply(fclient.Local)
+	if err != nil {
+		log.Fatalf("fakio start error: %s", err)
+	}
+
+	run(fclient.Local)
 }
