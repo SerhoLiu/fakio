@@ -11,18 +11,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	//"flag"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	//"net/http"
-	//"net/url"
 	"strconv"
-	//"strings"
-	//"time"
 )
 
 type Fclient struct {
@@ -155,7 +151,6 @@ func socks5Handshake(conn net.Conn) (req []byte, err error) {
 	buf := make([]byte, 264)
 	n, err = io.ReadAtLeast(conn, buf, 2)
 	if err != nil {
-		fmt.Println("155")
 		return
 	}
 
@@ -167,21 +162,17 @@ func socks5Handshake(conn net.Conn) (req []byte, err error) {
 	msgLen := nmethod + 2
 	if n < msgLen {
 		if _, err = io.ReadFull(conn, buf[n:msgLen]); err != nil {
-			fmt.Println("167")
 			return
 		}
 	}
 	// send confirmation: version 5, no authentication required
 	if _, err = conn.Write([]byte{0x05, 0}); err != nil {
-		fmt.Println("173")
 		return
 	}
 
 	// client request
 	n, err = io.ReadAtLeast(conn, buf, 5)
-	//fmt.Println(n)
 	if err != nil {
-		fmt.Println("180")
 		return
 	}
 	// check version and cmd
@@ -201,7 +192,6 @@ func socks5Handshake(conn net.Conn) (req []byte, err error) {
 
 	if n < reqLen {
 		if _, err = io.ReadFull(conn, buf[n:reqLen]); err != nil {
-			fmt.Println("200")
 			return
 		}
 	}
@@ -227,7 +217,6 @@ func socks5Handshake(conn net.Conn) (req []byte, err error) {
 	//SOCKS5 Replies
 	_, err = conn.Write(localReply)
 	if err != nil {
-		log.Println("send connection confirmation:", err)
 		return
 	}
 
@@ -236,7 +225,6 @@ func socks5Handshake(conn net.Conn) (req []byte, err error) {
 
 // Server
 func handleConnection(client net.Conn) {
-	log.Println("new connection....")
 
 	defer func() {
 		client.Close()
@@ -244,13 +232,11 @@ func handleConnection(client net.Conn) {
 
 	req, err := socks5Handshake(client)
 	if err != nil {
-		log.Println("socks handshake:", err)
 		return
 	}
 
 	remote, err := FakioDial(fclient.Server, req)
 	if err != nil {
-		log.Println("Failed connect to fakio server: ", err)
 		return
 	}
 	defer func() {
@@ -269,7 +255,6 @@ func handleConnection(client net.Conn) {
 
 			if n > 0 {
 				if _, err = dst.Write(buf[0:n]); err != nil {
-					log.Println("write to remote:", err)
 					break
 				}
 			}
@@ -286,18 +271,13 @@ func handleConnection(client net.Conn) {
 
 		if n > 0 {
 			if _, err = client.Write(buf[0:n]); err != nil {
-				log.Println("write to client:", err)
 				break
 			}
 		}
 		if err != nil {
-			fmt.Println("259:", err, " ", n)
 			break
 		}
 	}
-
-	log.Println("closed connection")
-
 }
 
 func run(listenAddr string) {
@@ -309,7 +289,6 @@ func run(listenAddr string) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Println("accept:", err)
 			continue
 		}
 		go handleConnection(conn)
@@ -373,7 +352,11 @@ func buildReply(addr string) (buf []byte, err error) {
 }
 
 func main() {
-	if err := getConfig("config.json", &fclient); err != nil {
+	var conf string
+	flag.StringVar(&conf, "c", "config.json", "config file path")
+	flag.Parse()
+
+	if err := getConfig(conf, &fclient); err != nil {
 		log.Fatalf("get config error: %s", err)
 	}
 	log.Printf("use config: %s", fclient)
