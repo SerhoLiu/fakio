@@ -112,23 +112,27 @@ func FakioDial(addr, server string) (c *FakioConn, err error) {
 	//handshake
 	req, err := buildClientReq(addr)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
 	key := stringToKey(TestPass)
 	block, err := aes.NewCipher(key)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 	enc := cipher.NewCFBEncrypter(block, req[0:16])
 	// 22 = iv + username
 	enc.XORKeyStream(req[22:], req[22:])
 	if _, err := conn.Write(req); err != nil {
+		conn.Close()
 		return nil, ErrHandToServer
 	}
 
 	hand := make([]byte, 64)
 	if _, err := conn.Read(hand); err != nil {
+		conn.Close()
 		return nil, ErrHandFromServer
 	}
 
