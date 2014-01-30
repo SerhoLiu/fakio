@@ -221,7 +221,7 @@ func run(client *http.Client) {
 	fmt.Printf("        Total Request:\t%d total, %d susceed, %d failed.\n", N*C, okReq, errReq)
 	fmt.Printf("           Total time:\t%4.4f secs.\n", total.Seconds())
 	fmt.Printf("         Average time:\t%4.4f secs.\n", allTime.Seconds()/float64(C))
-	fmt.Printf("     Time per request:\t%4.4f secs.\n", allTime.Seconds()/float64(C))
+	fmt.Printf("     Time per request:\t%4.4f secs.\n", total.Seconds()/float64(okReq))
 	fmt.Printf("  Requests per second:\t%4.4f\n", float64(okReq)/total.Seconds())
 }
 
