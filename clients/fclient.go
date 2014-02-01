@@ -296,7 +296,7 @@ func run(listenAddr string) {
 }
 
 func getConfig(path string, fclient *Fclient) (err error) {
-	file, err := os.Open(path) // For read access.
+	file, err := os.Open(path)
 	if err != nil {
 		return
 	}
