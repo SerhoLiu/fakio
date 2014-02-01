@@ -103,7 +103,6 @@ func buildClientReq(addr string) (buf []byte, err error) {
 }
 
 func FakioDial(addr, server string) (c *FakioConn, err error) {
-	//fmt.Println("FakioDial")
 	conn, err := net.Dial("tcp", server)
 	if err != nil {
 		return nil, err
