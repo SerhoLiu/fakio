@@ -2,7 +2,7 @@
 #include <time.h>
 #include "../src/base/fevent.h"
 
-long print_callback(struct event_loop *loop, long long id, void *evdata)
+long print_callback(struct event_loop *loop, void *evdata)
 {
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
