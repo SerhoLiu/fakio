@@ -1,4 +1,4 @@
-#include "../src/fcrypt.h"
+#include "../src/fakio.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,14 +71,14 @@ long long bench_urandom2(int times)
 long long bench_random(int times)
 {
     int i;
-    fcrypt_rand_t r;
-    fcrypt_rand_init(&r);
+    fcrypt_rand_t *r;
+    r = fcrypt_rand_new();
 
     unsigned char key[1024];
 
     long long start = get_ustime_sec();
     for (i = 0; i < times; i++) {
-        random_bytes(&r, key, 1024);
+        random_bytes(r, key, 1024);
     }
     return (get_ustime_sec() - start);
 }
