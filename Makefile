@@ -11,7 +11,7 @@ endif
 BASE_OBJ = src/base/hashmap.o src/base/sha2.o src/base/ini.o \
            src/base/fevent.o src/base/aes.o
 ALL_OBJ = src/futils.o src/fconfig.o src/fnet.o src/fcrypt.o \
-		  src/fcontext.o src/fhandler.o src/fuser.o $(BASE_OBJ)
+		  src/fcontexts.o src/fhandler.o src/fuser.o $(BASE_OBJ)
 
 all: fakio-server fakio-client
 
