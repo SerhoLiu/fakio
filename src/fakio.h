@@ -30,7 +30,7 @@ typedef struct fuser fuser_t;
 #include "fbuffer.h"
 #include "fuser.h"
 #include "fconfig.h"
-#include "fcontext.h"
+#include "fcontexts.h"
 #include "fcrypt.h"
 #include "fnet.h"
 
