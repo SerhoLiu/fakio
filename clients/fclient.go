@@ -85,8 +85,10 @@ func FakioDial(server string, req []byte) (c *FakioConn, err error) {
 		return nil, err
 	}
 	enc := cipher.NewCFBEncrypter(block, req[0:16])
+
 	// 22 = iv + username
-	enc.XORKeyStream(req[22:], req[22:])
+	index := 16 + int(req[16]) + 1
+	enc.XORKeyStream(req[index:], req[index:])
 	if _, err := conn.Write(req); err != nil {
 		return nil, errors.New("handshake to server error")
 	}
