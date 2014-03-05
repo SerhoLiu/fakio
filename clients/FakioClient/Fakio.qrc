@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/fakio">
+        <file>resources/tray.ico</file>
+        <file>resources/fakio.ico</file>
+    </qresource>
+</RCC>
