@@ -20,8 +20,12 @@ static inline void _shift_down(min_heap_t *s, long hole_index, time_event *e);
 
 static inline int min_heap_elem_greater(time_event *a, time_event *b)
 {
-    if (a->when_sec != b->when_sec) return (a->when_sec - b->when_sec);
-    return (a->when_usec - b->when_usec);
+    if (a->when_sec > b->when_sec ||
+        (a->when_sec == b->when_sec && a->when_usec > b->when_usec)) {
+        return 1;
+    }
+
+    return 0;
 }
 
 static inline void min_heap_ctor(min_heap_t *s)
@@ -95,6 +99,23 @@ static inline int min_heap_delete(min_heap_t *s, time_event *e)
     return -1;
 }
 
+static inline int min_heap_adjust(min_heap_t *s, time_event *e)
+{
+    if (e->min_heap_idx == -1) {
+        return min_heap_push(s, e);
+    } else {
+        long parent = (e->min_heap_idx - 1) / 2;
+        /* The position of e has changed; we shift it up or down
+         * as needed. We can't need to do both.
+         */
+        if (e->min_heap_idx > 0 && min_heap_elem_greater(s->p[parent], e))
+            _shift_up(s, e->min_heap_idx, e);
+        else
+            _shift_down(s, e->min_heap_idx, e);
+        return 0;
+    }
+}
+
 static inline int _reserve(min_heap_t *s, long n)
 {
     if (s->a < n) {
@@ -109,7 +130,6 @@ static inline int _reserve(min_heap_t *s, long n)
     }
     return 0;
 }
-
 
 static inline void _shift_up(min_heap_t *s, long hole_index, time_event *e)
 {
@@ -136,7 +156,7 @@ static inline void _shift_down(min_heap_t *s, long hole_index, time_event *e)
         hole_index = min_child;
         min_child = 2 * (hole_index + 1);
     }
-    _shift_up(s, hole_index,  e);
+    (s->p[hole_index] = e)->min_heap_idx = hole_index;
 }
 
 #endif /* _MIN_HEAP_H_ */
