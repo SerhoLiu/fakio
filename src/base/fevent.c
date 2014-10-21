@@ -404,6 +404,7 @@ static int process_time_events(event_loop *loop)
         
         if (retval != EV_TIMER_END) {
             add_millisec_to_now(retval, &te->when_sec, &te->when_usec);
+            min_heap_adjust(loop->timeheap, te);
         } else {
             delete_time_event(loop, te);
         }  
@@ -446,8 +447,9 @@ int process_events(event_loop *loop, int flags)
             }
 
             // 时间差小于 0 ，说明事件已经可以执行了，将秒和毫秒设为 0 （不阻塞）
-            if (tvp->tv_sec < 0) tvp->tv_sec = 0;
-            if (tvp->tv_usec < 0) tvp->tv_usec = 0;
+            if (tvp->tv_sec < 0) {
+                tvp->tv_sec = tvp->tv_usec = 0;
+            }
         } else {
             if (flags & EV_DONT_WAIT) {
                 tv.tv_sec = tv.tv_usec = 0;
