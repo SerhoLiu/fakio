@@ -4,3 +4,4 @@ fakio-client
 test/fbench
 test/test
 core
+.DS_Store
