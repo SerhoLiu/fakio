@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.serholiu.fakio</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/SErHo/Applications/Fakio</string>
+	<key>Program</key>
+	<string>fclient</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>fakio.log</string>
+	<key>StandardOutPath</key>
+	<string>fakio.log</string>
+</dict>
+</plist>
+
