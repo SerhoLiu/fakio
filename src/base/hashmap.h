@@ -70,4 +70,4 @@ void *hashmap_delete(hashmap *map, const void *key, int len);
 int hashmap_map(const hashmap *map, hashmap_map_func *func,
                 const void *other);
 
-#endif 
+#endif
