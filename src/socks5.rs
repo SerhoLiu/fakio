@@ -203,10 +203,10 @@ enum HandshakeState {
 }
 
 impl Future for Handshake {
-    type Item = TcpStream;
+    type Item = (TcpStream, ReqAddr);
     type Error = io::Error;
 
-    fn poll(&mut self) -> Poll<TcpStream, io::Error> {
+    fn poll(&mut self) -> Poll<(TcpStream, ReqAddr), io::Error> {
         loop {
             match self.state {
                 HandshakeState::AuthVersion(range) => {
@@ -233,7 +233,7 @@ impl Future for Handshake {
                     {
                         let buf = self.buf.get_ref_range(range);
                         if !buf.contains(&AUTH_METHOD_NONE) {
-                            return Err(other("no supported method given"));
+                            return Err(other("no supported auth method given"));
                         }
                     }
 
@@ -334,8 +334,9 @@ impl Future for Handshake {
                 HandshakeState::Done => {
                     self.state = HandshakeState::Over;
                     let remote = mem::replace(&mut self.remote, Err(not_connected()));
+                    let reqaddr = mem::replace(&mut self.reqaddr, None);
                     match remote {
-                        Ok(conn) => return Ok(Async::Ready(conn)),
+                        Ok(conn) => return Ok(Async::Ready((conn, reqaddr.unwrap()))),
                         Err(e) => {
                             return Err(other(
                                 &format!("connect remote {}, {}", self.remote_addr, e),
