@@ -16,6 +16,7 @@ enum BufState {
 }
 
 pub struct SharedBuf {
+    size: usize,
     inner: Vec<u8>,
     curr: usize,
     state: BufState,
@@ -24,6 +25,7 @@ pub struct SharedBuf {
 impl SharedBuf {
     pub fn new(size: usize) -> SharedBuf {
         SharedBuf {
+            size: size,
             inner: vec![0u8; size],
             curr: 0,
             state: BufState::None,
@@ -39,29 +41,29 @@ impl SharedBuf {
     }
 
     pub fn get_ref_from(&self, from: usize) -> &[u8] {
-        assert!(from <= self.inner.len());
+        assert!(from <= self.size);
         &self.inner[from..]
     }
 
     pub fn get_mut_from(&mut self, from: usize) -> &mut [u8] {
-        assert!(from <= self.inner.len());
+        assert!(from <= self.size);
         &mut self.inner[from..]
     }
 
     pub fn get_ref_to(&self, to: usize) -> &[u8] {
-        assert!(to <= self.inner.len());
+        assert!(to <= self.size);
         &self.inner[0..to]
     }
 
     pub fn get_mut_to(&mut self, to: usize) -> &mut [u8] {
-        assert!(to <= self.inner.len());
+        assert!(to <= self.size);
         &mut self.inner[0..to]
     }
 
     pub fn get_ref_range(&self, range: BufRange) -> &[u8] {
         let BufRange { start, end } = range;
 
-        assert!(end <= self.inner.len());
+        assert!(end <= self.size);
 
         &self.inner[start..end]
     }
@@ -69,7 +71,7 @@ impl SharedBuf {
     pub fn get_mut_range(&mut self, range: BufRange) -> &mut [u8] {
         let BufRange { start, end } = range;
 
-        assert!(end <= self.inner.len());
+        assert!(end <= self.size);
 
         &mut self.inner[start..end]
     }
@@ -84,7 +86,7 @@ impl SharedBuf {
         self.state = BufState::Reading;
 
         let BufRange { start, end } = range;
-        assert!(end <= self.inner.len());
+        assert!(end <= self.size);
 
         let need = end - start;
         while self.curr < need {
@@ -110,7 +112,7 @@ impl SharedBuf {
         self.state = BufState::Writeing;
 
         let BufRange { start, end } = range;
-        assert!(end <= self.inner.len());
+        assert!(end <= self.size);
 
         let need = end - start;
         while self.curr < need {
