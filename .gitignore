@@ -1,7 +1,3 @@
-*.o
-fakio-server
-fakio-client
-test/fbench
-test/test
-core
+.idea/
+target/
 .DS_Store

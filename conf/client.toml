@@ -1,0 +1,5 @@
+username = "serho"
+password = "123456"
+cipher = "aes-256-gcm"
+server = "127.0.0.1:8888"
+listen = "127.0.0.1:1080"
