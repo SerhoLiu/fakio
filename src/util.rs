@@ -6,9 +6,9 @@ use ansi_term::Color;
 use log::{LogLevel, LogRecord, LogLevelFilter};
 use env_logger::LogBuilder;
 
-struct Level(LogLevel);
+struct ColorLevel(LogLevel);
 
-impl fmt::Display for Level {
+impl fmt::Display for ColorLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             LogLevel::Trace => Color::Purple.paint("TRACE"),
@@ -29,7 +29,7 @@ pub fn init_logger() {
             "{}.{:03} [{}]  {}",
             t,
             ms,
-            Level(record.level()),
+            ColorLevel(record.level()),
             record.args()
         )
     };
