@@ -1,26 +1,71 @@
+use std::borrow;
 use std::error;
-use std::fs::File;
-use std::net::{SocketAddr, ToSocketAddrs};
-use std::io::Read;
 use std::result;
+use std::fs::File;
+use std::io::Read;
+use std::collections::HashMap;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use toml;
 use serde::de;
-use ring::digest::{digest, SHA256, SHA256_OUTPUT_LEN};
+use ring::digest;
+
+use v3;
 use crypto::Cipher;
 
 pub type Result<T> = result::Result<T, Box<error::Error>>;
 
 
+#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
+pub struct Digest {
+    value: [u8; v3::DEFAULT_DIGEST_LEN],
+}
+
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    pub username: [u8; SHA256_OUTPUT_LEN],
-    pub password: [u8; SHA256_OUTPUT_LEN],
+    pub username: Digest,
+    pub password: Digest,
     pub cipher: Cipher,
     pub server: SocketAddr,
     pub listen: SocketAddr,
 
     raw: TomlClientConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct User {
+    pub name: String,
+    pub password: Digest,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServerConfig {
+    pub listen: SocketAddr,
+    pub users: HashMap<Digest, User>,
+}
+
+impl Digest {
+    fn new(value: &str) -> Digest {
+        let mut d = Digest { value: [0u8; v3::DEFAULT_DIGEST_LEN] };
+        d.value.copy_from_slice(
+            digest::digest(v3::DEFAULT_DIGEST, value.as_bytes()).as_ref(),
+        );
+        d
+    }
+
+    pub fn len(&self) -> usize {
+        v3::DEFAULT_DIGEST_LEN
+    }
+
+    pub fn as_ref<'a>(&'a self) -> &'a [u8] {
+        &self.value
+    }
+}
+
+impl borrow::Borrow<[u8]> for Digest {
+    fn borrow(&self) -> &[u8] {
+        self.as_ref()
+    }
 }
 
 impl ClientConfig {
@@ -41,23 +86,44 @@ impl ClientConfig {
             format!("parse listen {}, {}", raw.listen, err)
         })?;
 
-        let mut config = ClientConfig {
-            username: [0u8; SHA256_OUTPUT_LEN],
-            password: [0u8; SHA256_OUTPUT_LEN],
+        Ok(ClientConfig {
+            username: Digest::new(&raw.username),
+            password: Digest::new(&raw.password),
             cipher: cipher,
             server: server,
             listen: listen,
             raw: raw.clone(),
-        };
-
-        let digest_user = digest(&SHA256, raw.username.as_bytes());
-        let digest_pass = digest(&SHA256, raw.password.as_bytes());
-        config.username.copy_from_slice(digest_user.as_ref());
-        config.password.copy_from_slice(digest_pass.as_ref());
-
-        Ok(config)
+        })
     }
 }
+
+impl ServerConfig {
+    pub fn new(path: &str) -> Result<ServerConfig> {
+        let raw: TomlServerConfig = read_toml_config(path)?;
+
+        let listen = raw.server.listen.parse::<SocketAddr>().map_err(|err| {
+            format!("parse listen {}, {}", raw.server.listen, err)
+        })?;
+
+        let mut users = HashMap::new();
+
+        for (user, password) in raw.users {
+            users.insert(
+                Digest::new(&user),
+                User {
+                    name: user,
+                    password: Digest::new(&password),
+                },
+            );
+        }
+
+        Ok(ServerConfig {
+            listen: listen,
+            users: users,
+        })
+    }
+}
+
 
 #[derive(Debug, Clone, Deserialize)]
 struct TomlClientConfig {
@@ -66,6 +132,17 @@ struct TomlClientConfig {
     cipher: Option<String>,
     server: String,
     listen: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TomlServer {
+    listen: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TomlServerConfig {
+    server: TomlServer,
+    users: HashMap<String, String>,
 }
 
 fn read_toml_config<T>(path: &str) -> Result<T>

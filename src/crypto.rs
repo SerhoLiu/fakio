@@ -1,3 +1,4 @@
+use std::io;
 use std::fmt;
 use std::result;
 
@@ -52,6 +53,14 @@ impl Cipher {
         }
     }
 
+    pub fn key_len(&self) -> usize {
+        self.algorithm().key_len()
+    }
+
+    pub fn tag_len(&self) -> usize {
+        self.algorithm().tag_len()
+    }
+
     fn algorithm(&self) -> &'static aead::Algorithm {
         match *self {
             Cipher::AES128GCM => &aead::AES_128_GCM,
@@ -68,40 +77,12 @@ impl Default for Cipher {
     }
 }
 
-pub struct Algorithm {
-    cipher: Cipher,
-    aead: &'static aead::Algorithm,
-}
-
-impl Algorithm {
-    pub fn new(cipher: Cipher) -> Algorithm {
-        Algorithm {
-            cipher: cipher,
-            aead: cipher.algorithm(),
-        }
-    }
-
-    pub fn cipher(&self) -> Cipher {
-        self.cipher
-    }
-
-    pub fn key_len(&self) -> usize {
-        self.aead.key_len()
-    }
-
-    pub fn nonce_len(&self) -> usize {
-        self.aead.nonce_len()
-    }
-
-    pub fn tag_len(&self) -> usize {
-        self.aead.tag_len()
-    }
-}
 
 const INFO_KEY: &'static str = "hello kelsi";
 
+pub type KeyPair = Vec<u8>;
 
-pub fn generate_key(secret: &[u8], len: usize) -> Result<Vec<u8>> {
+pub fn generate_key(secret: &[u8], len: usize) -> Result<KeyPair> {
     let salt = hmac::SigningKey::generate(&digest::SHA256, &rand::SystemRandom::new())
         .map_err(|_| Error::GenKey)?;
 
@@ -110,8 +91,14 @@ pub fn generate_key(secret: &[u8], len: usize) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+
 pub struct Crypto {
+    cipher: Cipher,
+    aead: &'static aead::Algorithm,
+
     tag_len: usize,
+    key_len: usize,
+    nonce_len: usize,
 
     open_key: aead::OpeningKey,
     open_nonce: Vec<u8>,
@@ -121,34 +108,55 @@ pub struct Crypto {
 }
 
 impl Crypto {
-    pub fn new(algorithm: &Algorithm, open_key: &[u8], seal_key: &[u8]) -> Result<Crypto> {
-        let algo = algorithm.aead;
-        let key_len = algo.key_len();
+    pub fn new(cipher: Cipher, open_key: &[u8], seal_key: &[u8]) -> Result<Crypto> {
+        let aead = cipher.algorithm();
+        let key_len = aead.key_len();
 
         if open_key.len() != key_len {
             return Err(Error::KeyLenNotMatch(key_len));
         }
-        let open_key = aead::OpeningKey::new(algo, open_key).map_err(
+        let open_key = aead::OpeningKey::new(aead, open_key).map_err(
             |_| Error::OpenKey,
         )?;
 
         if seal_key.len() != key_len {
             return Err(Error::KeyLenNotMatch(key_len));
         }
-        let seal_key = aead::SealingKey::new(algo, seal_key).map_err(
+        let seal_key = aead::SealingKey::new(aead, seal_key).map_err(
             |_| Error::SealKey,
         )?;
 
-        let nonce_len = algo.nonce_len();
+        let nonce_len = aead.nonce_len();
 
         Ok(Crypto {
-            tag_len: algo.tag_len(),
+            cipher: cipher,
+            aead: aead,
+
+            tag_len: aead.tag_len(),
+            key_len: aead.key_len(),
+            nonce_len: aead.nonce_len(),
 
             open_key: open_key,
             open_nonce: vec![0u8; nonce_len],
             seal_key: seal_key,
             seal_nonce: vec![0u8; nonce_len],
         })
+    }
+
+    pub fn cipher(&self) -> Cipher {
+        self.cipher
+    }
+
+    pub fn key_len(&self) -> usize {
+        self.key_len
+    }
+
+    pub fn tag_len(&self) -> usize {
+        self.tag_len
+    }
+
+    pub fn nonce_len(&self) -> usize {
+        self.nonce_len
     }
 
     pub fn encrypt(&mut self, inout: &mut [u8], in_len: usize) -> Result<usize> {
@@ -169,6 +177,7 @@ impl Crypto {
         };
 
         incr_nonce(&mut self.seal_nonce);
+
         Ok(out_len)
     }
 
@@ -207,6 +216,12 @@ impl fmt::Display for Error {
             Error::Open => write!(fmt, "ring open error"),
             Error::Seal => write!(fmt, "ring seal error"),
         }
+    }
+}
+
+impl From<Error> for io::Error {
+    fn from(err: Error) -> io::Error {
+        io::Error::new(io::ErrorKind::Other, format!("{}", err))
     }
 }
 

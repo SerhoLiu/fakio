@@ -1,10 +1,14 @@
+use std::io;
 use std::env;
 use std::fmt;
 
 use time;
 use ansi_term::Color;
+use ring::rand::{SecureRandom, SystemRandom};
 use log::{LogLevel, LogRecord, LogLevelFilter};
 use env_logger::LogBuilder;
+
+use v3::MAX_PADDING_LEN;
 
 struct ColorLevel(LogLevel);
 
@@ -46,4 +50,61 @@ pub fn init_logger() {
     }
 
     builder.init().unwrap();
+}
+
+
+/// MAX_PADDING_LEN 255
+///
+/// +-------+----------+
+/// |  len  |   bytes  |
+/// +-------+----------+
+/// | 1bytes| [0, 255] |
+/// +-------+----------+
+pub struct RandomBytes {
+    len: usize,
+    bytes: [u8; 1 + MAX_PADDING_LEN],
+}
+
+impl RandomBytes {
+    pub fn new() -> io::Result<RandomBytes> {
+        let mut padding = [0u8; 1 + MAX_PADDING_LEN];
+        let rand = SystemRandom::new();
+
+        // 1. rand len
+        rand.fill(&mut padding[..1]).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
+        })?;
+
+        // 2. rand data
+        let len = padding[0] as usize;
+        rand.fill(&mut padding[1..len + 1]).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
+        })?;
+        Ok(RandomBytes {
+            len: len,
+            bytes: padding,
+        })
+    }
+
+    pub fn get<'a>(&'a self) -> &'a [u8] {
+        &self.bytes[..self.len + 1]
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use std::io::ErrorKind;
+
+    #[test]
+    fn test_random_bytes() {
+        match super::RandomBytes::new() {
+            Ok(r) => {
+                let bytes = r.get();
+                let size = bytes[0] as usize;
+                assert!(size + 1 == bytes.len());
+            }
+            Err(e) => assert!(e.kind() == ErrorKind::Other),
+        }
+    }
 }

@@ -50,7 +50,11 @@ impl ReqAddr {
         }
     }
 
-    pub fn get(&self) -> io::Result<String> {
+    pub fn get_bytes<'a>(&'a self) -> &'a [u8] {
+        &self.bytes[..self.len]
+    }
+
+    pub fn get(&self) -> io::Result<(String, u16)> {
         let atyp = self.bytes[0];
         let buf = &self.bytes[1..self.len];
 
@@ -58,8 +62,7 @@ impl ReqAddr {
             ADDR_TYPE_IPV4 => {
                 let addr = net::Ipv4Addr::new(buf[0], buf[1], buf[2], buf[3]);
                 let port = ((buf[4] as u16) << 8) | (buf[5] as u16);
-                let addr = net::SocketAddrV4::new(addr, port);
-                Ok(format!("{}", SocketAddr::V4(addr)))
+                Ok((format!("{}", addr), port))
             }
             ADDR_TYPE_IPV6 => {
                 let a = ((buf[0] as u16) << 8) | (buf[1] as u16);
@@ -72,17 +75,17 @@ impl ReqAddr {
                 let h = ((buf[14] as u16) << 8) | (buf[15] as u16);
                 let addr = net::Ipv6Addr::new(a, b, c, d, e, f, g, h);
                 let port = ((buf[16] as u16) << 8) | (buf[17] as u16);
-                let addr = net::SocketAddrV6::new(addr, port, 0, 0);
-                Ok(format!("{}", SocketAddr::V6(addr)))
+
+                Ok((format!("{}", addr), port))
             }
             ADDR_TYPE_DOMAIN_NAME => {
                 let len = buf[0] as usize;
-                let domain = str::from_utf8(&buf[1..len + 1]).map_err(|e| {
+                let domain = String::from_utf8(buf[1..len + 1].to_vec()).map_err(|e| {
                     other(&format!("domain not valid utf-8, {}", e))
                 })?;
                 let pos = buf.len() - 2;
                 let port = ((buf[pos] as u16) << 8) | (buf[pos + 1] as u16);
-                Ok(format!("{}:{}", domain, port))
+                Ok((domain, port))
             }
             _ => unreachable!(),
         }
@@ -198,8 +201,6 @@ enum HandshakeState {
     ReqEnd(BufRange),
 
     Done,
-
-    Over,
 }
 
 impl Future for Handshake {
@@ -291,7 +292,7 @@ impl Future for Handshake {
 
                     let reqaddr = ReqAddr::new(self.buf.get_ref_range(range));
                     let addr = reqaddr.get()?;
-                    info!("request {}", addr);
+                    info!("request {}:{}", addr.0, addr.1);
 
                     self.reqaddr = Some(reqaddr);
                     self.connect = Some(TcpStream::connect(&self.remote_addr, &self.handle));
@@ -330,9 +331,6 @@ impl Future for Handshake {
                 HandshakeState::ReqEnd(range) => {
                     try_ready!(self.buf.write_exact(&mut (&*self.client), range));
                     self.state = HandshakeState::Done;
-                }
-                HandshakeState::Done => {
-                    self.state = HandshakeState::Over;
                     let remote = mem::replace(&mut self.remote, Err(not_connected()));
                     let reqaddr = mem::replace(&mut self.reqaddr, None);
                     match remote {
@@ -344,7 +342,7 @@ impl Future for Handshake {
                         }
                     }
                 }
-                HandshakeState::Over => panic!("poll a done future"),
+                HandshakeState::Done => panic!("poll a done future"),
             };
         }
     }

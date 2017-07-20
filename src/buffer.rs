@@ -76,6 +76,59 @@ impl SharedBuf {
         &mut self.inner[start..end]
     }
 
+    pub fn copy_from_slice(&mut self, range: BufRange, slice: &[u8]) {
+        let BufRange { start, end } = range;
+        assert!(end <= self.size);
+
+        (&mut self.inner[start..end]).copy_from_slice(slice);
+    }
+
+    pub fn read_most<R: Read>(
+        &mut self,
+        reader: &mut R,
+        range: BufRange,
+    ) -> Poll<(bool, BufRange), io::Error> {
+        assert!(self.state != BufState::Writeing);
+
+        self.state = BufState::Reading;
+
+        let BufRange { start, end } = range;
+        assert!(end <= self.size);
+
+        let mut eof = false;
+        let mut curr = 0;
+        let need = end - start;
+        while curr < need {
+            match reader.read(&mut self.inner[start + curr..end]) {
+                Ok(n) => {
+                    curr += n;
+                    if n == 0 {
+                        eof = true;
+                        break;
+                    }
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        self.state = BufState::None;
+
+        if !eof && curr == 0 {
+            Ok(Async::NotReady)
+        } else {
+            Ok(Async::Ready((
+                eof,
+                BufRange {
+                    start: start,
+                    end: start + curr,
+                },
+            )))
+        }
+    }
+
     pub fn read_exact<R: Read>(
         &mut self,
         reader: &mut R,
