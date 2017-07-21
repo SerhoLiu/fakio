@@ -56,9 +56,7 @@ impl Client {
         let server = clients.for_each(|(client, addr)| {
             handle.spawn(client.then(move |res| {
                 match res {
-                    Ok(x) => {
-                        println!("proxied for {} {:?}", addr, x)
-                    }
+                    Ok(x) => println!("proxied for {} {:?}", addr, x),
                     Err(e) => println!("error for {}: {}", addr, e),
                 }
                 future::ok(())
@@ -89,27 +87,22 @@ impl Local {
         let cipher = config.cipher;
         let client = Rc::new(self.client);
 
-        let handshake = socks5::Handshake::new(
-            handle,
-            reply,
-            client.clone(),
-            server,
-        ).and_then(move |(conn, addr)| {
-            conn.set_nodelay(true).unwrap();
-            let server = Rc::new(conn);
-            match Handshake::new(config.clone(), server.clone(), addr) {
-                Ok(hand) => mybox(hand.map(|keypair| (keypair, server))),
-                Err(e) => mybox(future::err(e))
-            }
-        }).and_then(move |(keypair, server): (KeyPair, Rc<TcpStream>)| {
-            let len = keypair.len() / 2;
-            let ekey = &keypair[..len];
-            let dkey = &keypair[len..];
-            let enc = EncTransfer::new(client.clone(), server.clone(), cipher, ekey).unwrap();
-            let dec = DecTransfer::new(server.clone(), client.clone(), cipher, dkey).unwrap();
+        let handshake = socks5::Handshake::new(handle, reply, client.clone(), server)
+            .and_then(move |(conn, addr)| {
+                conn.set_nodelay(true).unwrap();
+                let server = Rc::new(conn);
+                match Handshake::new(config.clone(), server.clone(), addr) {
+                    Ok(hand) => mybox(hand.map(|keypair| (keypair, server))),
+                    Err(e) => mybox(future::err(e)),
+                }
+            })
+            .and_then(move |(keypair, server): (KeyPair, Rc<TcpStream>)| {
+                let (ckey, skey) = keypair.split();
+                let enc = EncTransfer::new(client.clone(), server.clone(), cipher, ckey).unwrap();
+                let dec = DecTransfer::new(server.clone(), client.clone(), cipher, skey).unwrap();
 
-            enc.join(dec)
-        });
+                enc.join(dec)
+            });
 
         mybox(handshake)
     }
@@ -306,12 +299,12 @@ impl Future for Handshake {
                     if key_len != 2 * self.config.cipher.key_len() {
                         return Err(other("server resp key length not match"));
                     }
-                    let mut key = Vec::with_capacity(key_len);
-                    key.extend_from_slice(&buf[padding_len + 1..]);
+
+                    let keypair = KeyPair::from(&buf[padding_len + 1..]);
 
                     self.state = HandshakeState::Done;
 
-                    return Ok(Async::Ready(key));
+                    return Ok(Async::Ready(keypair));
                 }
                 HandshakeState::Done => panic!("poll a done future"),
             }
@@ -323,6 +316,6 @@ fn other(desc: &str) -> io::Error {
     io::Error::new(io::ErrorKind::Other, desc)
 }
 
-fn mybox<F: Future + 'static>(f: F) -> Box<Future<Item=F::Item, Error=F::Error>> {
+fn mybox<F: Future + 'static>(f: F) -> Box<Future<Item = F::Item, Error = F::Error>> {
     Box::new(f)
 }

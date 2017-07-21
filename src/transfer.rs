@@ -102,9 +102,9 @@ impl Future for EncTransfer {
                             let data = self.buf.get_mut_range(data_range);
                             self.crypto.encrypt(data, data_len)?;
                         }
-                        self.state = EncState::Writing(BufRange{
+                        self.state = EncState::Writing(BufRange {
                             start: 0,
-                            end: data_range.end
+                            end: data_range.end,
                         });
                     }
                 }

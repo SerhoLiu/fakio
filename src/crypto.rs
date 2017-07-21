@@ -80,15 +80,50 @@ impl Default for Cipher {
 
 const INFO_KEY: &'static str = "hello kelsi";
 
-pub type KeyPair = Vec<u8>;
 
-pub fn generate_key(secret: &[u8], len: usize) -> Result<KeyPair> {
-    let salt = hmac::SigningKey::generate(&digest::SHA256, &rand::SystemRandom::new())
-        .map_err(|_| Error::GenKey)?;
+#[derive(Debug)]
+pub struct KeyPair {
+    value: Vec<u8>,
+}
 
-    let mut out = vec![0u8; len];
-    hkdf::extract_and_expand(&salt, secret, INFO_KEY.as_bytes(), &mut out);
-    Ok(out)
+impl KeyPair {
+    pub fn generate(secret: &[u8], cipher: Cipher) -> Result<KeyPair> {
+        let len = cipher.key_len() * 2;
+
+        let salt = hmac::SigningKey::generate(&digest::SHA256, &rand::SystemRandom::new())
+            .map_err(|_| Error::GenKey)?;
+
+        let mut out = Vec::with_capacity(len);
+
+        // not need init it
+        unsafe {
+            out.set_len(len);
+        }
+        hkdf::extract_and_expand(&salt, secret, INFO_KEY.as_bytes(), &mut out);
+        Ok(KeyPair { value: out })
+    }
+
+    pub fn from(slice: &[u8]) -> KeyPair {
+        let mut key = Vec::with_capacity(slice.len());
+
+        key.extend_from_slice(slice);
+        KeyPair { value: key }
+    }
+
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+
+    pub fn split(&self) -> (&[u8], &[u8]) {
+        let len = self.value.len() / 2;
+        (&self.value[..len], &self.value[len..])
+    }
+}
+
+impl AsRef<[u8]> for KeyPair {
+    fn as_ref(&self) -> &[u8] {
+        self.value.as_ref()
+    }
 }
 
 
