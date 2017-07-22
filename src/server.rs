@@ -5,6 +5,7 @@ use std::time::Duration;
 use std::net::SocketAddr;
 use std::collections::HashMap;
 
+use rand::{self, Rng};
 use futures::{future, Future, Stream, Poll, Async};
 use futures_cpupool::CpuPool;
 use tokio_core::net::{TcpStream, TcpListener};
@@ -40,7 +41,7 @@ impl Server {
         let handle = core.handle();
 
         let listen = self.config.listen;
-        let timeout = Duration::new(v3::HANDSHAKE_TIMEOUT, 0);
+        let mut rng = rand::thread_rng();
 
         let listener = TcpListener::bind(&listen, &handle).map_err(|e| {
             other(&format!("bind on {}, {}", listen, e))
@@ -59,7 +60,10 @@ impl Server {
                 self.cpu_pool.clone(),
             );
 
-            let timeout = Timeout::new(timeout, &handle).unwrap();
+            // timeout random [10, 40)
+            let secs = (rng.gen::<u8>() % 30 + 10) as u64;
+            println!("timeout {}", secs);
+            let timeout = Timeout::new(Duration::new(secs, 0), &handle).unwrap();
             let handshake = handshake.map(Ok).select(timeout.map(Err)).then(
                 |res| match res {
                     Ok((Ok(hand), _timeout)) => Ok(hand),

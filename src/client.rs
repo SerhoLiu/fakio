@@ -15,6 +15,8 @@ use super::config::ClientConfig;
 use super::util::RandomBytes;
 
 
+const HANDSHAKE_TIMEOUT: u64 = 10;
+
 pub struct Client {
     config: Rc<ClientConfig>,
     socks5_reply: Rc<socks5::Reply>,
@@ -33,7 +35,7 @@ impl Client {
         let mut core = Core::new()?;
         let handle = core.handle();
 
-        let timeout = Duration::new(v3::HANDSHAKE_TIMEOUT, 0);
+        let timeout = Duration::new(HANDSHAKE_TIMEOUT, 0);
         let config = self.config.clone();
         let socks5_reply = self.socks5_reply.clone();
 
@@ -325,6 +327,7 @@ impl Future for Handshake {
     }
 }
 
+#[inline]
 fn other(desc: &str) -> io::Error {
     io::Error::new(io::ErrorKind::Other, desc)
 }

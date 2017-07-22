@@ -1,6 +1,12 @@
+#[macro_use]
+extern crate log;
+extern crate time;
+extern crate rand;
 extern crate ring;
 extern crate toml;
 extern crate serde;
+extern crate ansi_term;
+extern crate env_logger;
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
@@ -9,11 +15,6 @@ extern crate futures_cpupool;
 #[macro_use]
 extern crate tokio_io;
 extern crate tokio_core;
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-extern crate time;
-extern crate ansi_term;
 
 mod net;
 mod buffer;
@@ -34,7 +35,6 @@ mod v3 {
     pub const VERSION: u8 = 0x03;
 
     pub const MAX_BUFFER_SIZE: usize = 32 * 1024;
-    pub const HANDSHAKE_TIMEOUT: u64 = 5;
 
     pub const DATA_LEN_LEN: usize = 2;
     pub const MAX_PADDING_LEN: usize = 255;
