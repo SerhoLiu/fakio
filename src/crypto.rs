@@ -53,10 +53,12 @@ impl Cipher {
         }
     }
 
+    #[inline]
     pub fn key_len(&self) -> usize {
         self.algorithm().key_len()
     }
 
+    #[inline]
     pub fn tag_len(&self) -> usize {
         self.algorithm().tag_len()
     }
@@ -127,6 +129,7 @@ impl AsRef<[u8]> for KeyPair {
 }
 
 
+#[allow(dead_code)]
 pub struct Crypto {
     cipher: Cipher,
     aead: &'static aead::Algorithm,
@@ -178,20 +181,9 @@ impl Crypto {
         })
     }
 
-    pub fn cipher(&self) -> Cipher {
-        self.cipher
-    }
-
-    pub fn key_len(&self) -> usize {
-        self.key_len
-    }
-
+    #[inline]
     pub fn tag_len(&self) -> usize {
         self.tag_len
-    }
-
-    pub fn nonce_len(&self) -> usize {
-        self.nonce_len
     }
 
     pub fn encrypt(&mut self, inout: &mut [u8], in_len: usize) -> Result<usize> {
@@ -216,6 +208,7 @@ impl Crypto {
         Ok(out_len)
     }
 
+    #[inline]
     pub fn decrypt(&mut self, inout: &mut [u8]) -> Result<usize> {
         match aead::open_in_place(&self.open_key, &self.open_nonce, &[], 0, inout) {
             Ok(buf) => {

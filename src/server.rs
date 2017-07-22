@@ -7,8 +7,8 @@ use std::collections::HashMap;
 
 use futures::{future, Future, Stream, Poll, Async};
 use futures_cpupool::CpuPool;
-use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_core::net::{TcpStream, TcpListener};
+use tokio_core::reactor::{Core, Handle, Timeout};
 
 use super::v3;
 use super::socks5;

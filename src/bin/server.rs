@@ -1,6 +1,6 @@
-extern crate fakio;
 #[macro_use]
 extern crate log;
+extern crate fakio;
 
 use std::env;
 use std::process;
@@ -19,7 +19,6 @@ fn main() {
             process::exit(1);
         }
     };
-    println!("{:?}", config);
 
     let server = server::Server::new(config);
     if let Err(e) = server.serve() {

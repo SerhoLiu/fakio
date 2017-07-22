@@ -8,7 +8,8 @@ use ring::rand::{SecureRandom, SystemRandom};
 use log::{LogLevel, LogRecord, LogLevelFilter};
 use env_logger::LogBuilder;
 
-use v3::MAX_PADDING_LEN;
+use super::v3::MAX_PADDING_LEN;
+
 
 struct ColorLevel(LogLevel);
 
@@ -86,6 +87,7 @@ impl RandomBytes {
         })
     }
 
+    #[inline]
     pub fn get<'a>(&'a self) -> &'a [u8] {
         &self.bytes[..self.len + 1]
     }

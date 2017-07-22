@@ -10,7 +10,8 @@ use futures::{Poll, Future, Async};
 use tokio_core::net::{TcpStream, TcpStreamNew};
 use tokio_core::reactor::Handle;
 
-use buffer::{BufRange, SharedBuf};
+use super::buffer::{BufRange, SharedBuf};
+
 
 const VERSION: u8 = 0x05;
 const AUTH_METHOD_NONE: u8 = 0x00;
@@ -50,6 +51,7 @@ impl ReqAddr {
         }
     }
 
+    #[inline]
     pub fn get_bytes<'a>(&'a self) -> &'a [u8] {
         &self.bytes[..self.len]
     }
@@ -351,11 +353,12 @@ impl Future for Handshake {
     }
 }
 
-
+#[inline]
 fn other(desc: &str) -> io::Error {
     io::Error::new(io::ErrorKind::Other, desc)
 }
 
+#[inline]
 fn not_connected() -> io::Error {
     io::Error::new(io::ErrorKind::NotConnected, "not connected")
 }

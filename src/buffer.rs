@@ -1,6 +1,9 @@
+#![allow(dead_code)]
+
 use std::io::{self, Read, Write};
 
 use futures::{Poll, Async};
+
 
 #[derive(Copy, Clone, Debug)]
 pub struct BufRange {
@@ -32,34 +35,41 @@ impl SharedBuf {
         }
     }
 
+    #[inline]
     pub fn get_ref(&self) -> &[u8] {
         &self.inner[..]
     }
 
+    #[inline]
     pub fn get_mut(&mut self) -> &mut [u8] {
         &mut self.inner[..]
     }
 
+    #[inline]
     pub fn get_ref_from(&self, from: usize) -> &[u8] {
         assert!(from <= self.size);
         &self.inner[from..]
     }
 
+    #[inline]
     pub fn get_mut_from(&mut self, from: usize) -> &mut [u8] {
         assert!(from <= self.size);
         &mut self.inner[from..]
     }
 
+    #[inline]
     pub fn get_ref_to(&self, to: usize) -> &[u8] {
         assert!(to <= self.size);
         &self.inner[0..to]
     }
 
+    #[inline]
     pub fn get_mut_to(&mut self, to: usize) -> &mut [u8] {
         assert!(to <= self.size);
         &mut self.inner[0..to]
     }
 
+    #[inline]
     pub fn get_ref_range(&self, range: BufRange) -> &[u8] {
         let BufRange { start, end } = range;
 
@@ -68,6 +78,7 @@ impl SharedBuf {
         &self.inner[start..end]
     }
 
+    #[inline]
     pub fn get_mut_range(&mut self, range: BufRange) -> &mut [u8] {
         let BufRange { start, end } = range;
 
@@ -76,6 +87,7 @@ impl SharedBuf {
         &mut self.inner[start..end]
     }
 
+    #[inline]
     pub fn copy_from_slice(&mut self, range: BufRange, slice: &[u8]) {
         let BufRange { start, end } = range;
         assert!(end <= self.size);
@@ -182,10 +194,12 @@ impl SharedBuf {
     }
 }
 
+#[inline]
 fn eof() -> io::Error {
     io::Error::new(io::ErrorKind::UnexpectedEof, "early eof")
 }
 
+#[inline]
 fn zero_write() -> io::Error {
     io::Error::new(io::ErrorKind::WriteZero, "zero-length write")
 }

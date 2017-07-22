@@ -3,8 +3,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use futures::{future, Future, Stream, Poll, Async};
-use tokio_core::reactor::{Core, Timeout};
 use tokio_core::net::{TcpStream, TcpListener};
+use tokio_core::reactor::{Core, Timeout};
 
 use super::v3;
 use super::socks5;

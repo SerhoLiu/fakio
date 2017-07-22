@@ -1,5 +1,5 @@
-use std::borrow;
 use std::error;
+use std::borrow;
 use std::result;
 use std::fs::File;
 use std::io::Read;
@@ -10,11 +10,11 @@ use toml;
 use serde::de;
 use ring::digest;
 
-use v3;
-use crypto::Cipher;
+use super::v3;
+use super::crypto::Cipher;
+
 
 pub type Result<T> = result::Result<T, Box<error::Error>>;
-
 
 #[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
 pub struct Digest {
@@ -53,10 +53,12 @@ impl Digest {
         d
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         v3::DEFAULT_DIGEST_LEN
     }
 
+    #[inline]
     pub fn as_ref<'a>(&'a self) -> &'a [u8] {
         &self.value
     }
