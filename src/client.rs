@@ -1,8 +1,9 @@
 use std::io;
 use std::rc::Rc;
+use std::time::Duration;
 
 use futures::{future, Future, Stream, Poll, Async};
-use tokio_core::reactor;
+use tokio_core::reactor::{Core, Timeout};
 use tokio_core::net::{TcpStream, TcpListener};
 
 use super::v3;
@@ -29,9 +30,10 @@ impl Client {
     }
 
     pub fn serve(&self) -> io::Result<()> {
-        let mut core = reactor::Core::new()?;
+        let mut core = Core::new()?;
         let handle = core.handle();
 
+        let timeout = Duration::new(v3::HANDSHAKE_TIMEOUT, 0);
         let config = self.config.clone();
         let socks5_reply = self.socks5_reply.clone();
 
@@ -61,6 +63,15 @@ impl Client {
                     Err(e) => future::err(e),
                 }.flatten()
             });
+
+            let timeout = Timeout::new(timeout, &handle).unwrap();
+            let handshake = handshake.map(Ok).select(timeout.map(Err)).then(
+                |res| match res {
+                    Ok((Ok(hand), _timeout)) => Ok(hand),
+                    Ok((Err(()), _handshake)) => Err(other("handshake timeout")),
+                    Err((e, _other)) => Err(e),
+                }
+            );
 
             let transfer_config = config.clone();
             let transfer = handshake.and_then(move |(keypair, server): (KeyPair, Rc<TcpStream>)| {
