@@ -1,6 +1,0 @@
-*.o
-fakio-server
-fakio-client
-test/fbench
-test/test
-core
