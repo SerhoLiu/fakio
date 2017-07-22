@@ -14,7 +14,7 @@ use super::v3;
 use super::socks5;
 use super::transfer;
 use super::net::TcpConnect;
-use super::util::RandomBytes;
+use super::util::{self, RandomBytes};
 use super::buffer::{BufRange, SharedBuf};
 use super::crypto::{KeyPair, Cipher, Crypto};
 use super::config::{Digest, User, ServerConfig};
@@ -206,9 +206,10 @@ impl Handshake {
                 start: range.end - v3::DEFAULT_DIGEST_LEN,
                 end: range.end,
             });
-            self.users.get(user).ok_or(other(
-                &format!("user ({:?}) not exists", user),
-            ))?
+            self.users.get(user).ok_or(other(&format!(
+                "user ({}) not exists",
+                util::to_hex(user)
+            )))?
         };
 
         let mut crypto = Crypto::new(

@@ -94,6 +94,19 @@ impl RandomBytes {
 }
 
 
+static CHARS: &'static [u8] = b"0123456789abcdef";
+
+pub fn to_hex(slice: &[u8]) -> String {
+    let mut v = Vec::with_capacity(slice.len() * 2);
+    for &byte in slice.iter() {
+        v.push(CHARS[(byte >> 4) as usize]);
+        v.push(CHARS[(byte & 0xf) as usize]);
+    }
+
+    unsafe { String::from_utf8_unchecked(v) }
+}
+
+
 #[cfg(test)]
 mod test {
     use std::io::ErrorKind;
