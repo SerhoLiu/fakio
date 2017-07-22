@@ -8,8 +8,8 @@ use tokio_core::net::{TcpStream, TcpListener};
 
 use super::v3;
 use super::socks5;
+use super::transfer;
 use super::buffer::{BufRange, SharedBuf};
-use super::transfer::{enc_transfer, dec_transfer};
 use super::crypto::{KeyPair, Crypto};
 use super::config::ClientConfig;
 use super::util::RandomBytes;
@@ -49,17 +49,22 @@ impl Client {
             let socks5 = socks5::Handshake::new(
                 handle.clone(),
                 socks5_reply.clone(),
+                addr,
                 client.clone(),
                 config.server,
             );
 
             let handshake_config = config.clone();
-            let handshake = socks5.and_then(move |(conn, addr)| {
-                let config = handshake_config.clone();
+            let handshake = socks5.and_then(move |(conn, reqaddr)| {
                 conn.set_nodelay(true).unwrap();
+
+                let config = handshake_config.clone();
+                let req = reqaddr.get().unwrap();
+                let req = format!("{}:{}", req.0, req.1);
                 let server = Rc::new(conn);
-                match Handshake::new(config, server.clone(), addr) {
-                    Ok(hand) => future::ok(hand.map(|keypair| (keypair, server))),
+
+                match Handshake::new(config, server.clone(), reqaddr) {
+                    Ok(hand) => future::ok(hand.map(|keypair| (req, keypair, server))),
                     Err(e) => future::err(e),
                 }.flatten()
             });
@@ -70,24 +75,28 @@ impl Client {
                     Ok((Ok(hand), _timeout)) => Ok(hand),
                     Ok((Err(()), _handshake)) => Err(other("handshake timeout")),
                     Err((e, _other)) => Err(e),
-                }
+                },
             );
 
             let transfer_config = config.clone();
-            let transfer = handshake.and_then(move |(keypair, server): (KeyPair, Rc<TcpStream>)| {
+            let transfer = handshake.and_then(move |(reqaddr, keypair, server)| {
                 let (ckey, skey) = keypair.split();
-                let enc =
-                    enc_transfer(client.clone(), server.clone(), transfer_config.cipher, ckey);
-                let dec =
-                    dec_transfer(server.clone(), client.clone(), transfer_config.cipher, skey);
+                let trans =
+                    transfer::encrypt(client.clone(), server.clone(), transfer_config.cipher, ckey)
+                        .join(transfer::decrypt(
+                            server.clone(),
+                            client.clone(),
+                            transfer_config.cipher,
+                            skey,
+                        ));
 
-                enc.join(dec)
+                trans.map(|(enc, dec)| (reqaddr, transfer::Stat::new(enc, dec)))
             });
 
             handle.spawn(transfer.then(move |res| {
                 match res {
-                    Ok(x) => println!("proxied for {} {:?}", addr, x),
-                    Err(e) => println!("error for {}: {}", addr, e),
+                    Ok((req, stat)) => info!("{} - request {} success, {}", addr, req, stat),
+                    Err(e) => error!("{} - failed by {}", addr, e),
                 }
                 future::ok(())
             }));

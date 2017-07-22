@@ -1,19 +1,21 @@
 use std::io;
 use std::mem;
 use std::rc::Rc;
+use std::time::Duration;
+use std::net::SocketAddr;
 use std::collections::HashMap;
 
 use futures::{future, Future, Stream, Poll, Async};
 use futures_cpupool::CpuPool;
-use tokio_core::reactor;
+use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_core::net::{TcpStream, TcpListener};
 
 use super::v3;
 use super::socks5;
+use super::transfer;
 use super::net::TcpConnect;
 use super::util::RandomBytes;
 use super::buffer::{BufRange, SharedBuf};
-use super::transfer::{enc_transfer, dec_transfer};
 use super::crypto::{KeyPair, Cipher, Crypto};
 use super::config::{Digest, User, ServerConfig};
 
@@ -34,48 +36,71 @@ impl Server {
     }
 
     pub fn serve(&self) -> io::Result<()> {
-        let mut core = reactor::Core::new()?;
+        let mut core = Core::new()?;
         let handle = core.handle();
 
-        let listener = TcpListener::bind(&self.config.listen, &handle).map_err(
-            |e| {
-                other(&format!("bind on {}, {}", self.config.listen, e))
-            },
-        )?;
+        let listen = self.config.listen;
+        let timeout = Duration::new(v3::HANDSHAKE_TIMEOUT, 0);
 
-        info!("Listening for {}", self.config.listen);
+        let listener = TcpListener::bind(&listen, &handle).map_err(|e| {
+            other(&format!("bind on {}, {}", listen, e))
+        })?;
+
+        info!("Listening on {}", listen);
 
         let server = listener.incoming().for_each(|(client, addr)| {
-            //let addr = addr.clone();
             let client = Rc::new(client);
-            let hand = Handshake::new(
+
+            let handshake = Handshake::new(
+                addr,
                 self.users.clone(),
                 client.clone(),
                 handle.clone(),
                 self.cpu_pool.clone(),
-            ).and_then(move |context| {
-                let (ckey, skey) = context.keypair.split();
+            );
 
-                let enc = enc_transfer(
+            let timeout = Timeout::new(timeout, &handle).unwrap();
+            let handshake = handshake.map(Ok).select(timeout.map(Err)).then(
+                |res| match res {
+                    Ok((Ok(hand), _timeout)) => Ok(hand),
+                    Ok((Err(()), _handshake)) => Err(other("handshake timeout")),
+                    Err((e, _other)) => Err(e),
+                },
+            );
+
+            let transfer = handshake.and_then(move |context| {
+                let (ckey, skey) = context.keypair.split();
+                let trans = transfer::encrypt(
                     context.remote.clone(),
                     context.client.clone(),
                     context.cipher,
                     skey,
-                );
-
-                let dec = dec_transfer(
+                ).join(transfer::decrypt(
                     context.client.clone(),
                     context.remote.clone(),
                     context.cipher,
                     ckey,
-                );
+                ));
 
-                enc.join(dec)
+                let user = context.user;
+                let reqaddr = context.addr;
+                trans.map(move |(enc, dec)| {
+                    (user, reqaddr, transfer::Stat::new(enc, dec))
+                })
             });
-            handle.spawn(hand.then(move |res| {
+
+            handle.spawn(transfer.then(move |res| {
                 match res {
-                    Ok(x) => info!("proxied for {} {:?}", addr, x),
-                    Err(e) => error!("error for {}: {}", addr, e),
+                    Ok((user, req, stat)) => {
+                        info!(
+                            "{} - ({}) request {} success, {}",
+                            addr,
+                            user.name,
+                            req,
+                            stat,
+                        )
+                    }
+                    Err(e) => error!("{} - failed by {}", addr, e),
                 }
                 future::ok(())
             }));
@@ -135,9 +160,10 @@ impl Request {
 }
 
 struct Handshake {
+    peer_addr: SocketAddr,
     users: Rc<HashMap<Digest, User>>,
     client: Rc<TcpStream>,
-    handle: reactor::Handle,
+    handle: Handle,
     cpu_pool: CpuPool,
 
     buf: SharedBuf,
@@ -148,12 +174,14 @@ struct Handshake {
 
 impl Handshake {
     fn new(
+        peer: SocketAddr,
         users: Rc<HashMap<Digest, User>>,
         client: Rc<TcpStream>,
-        handle: reactor::Handle,
+        handle: Handle,
         cpu_pool: CpuPool,
     ) -> Handshake {
         Handshake {
+            peer_addr: peer,
             users: users,
             client: client,
             handle: handle,
@@ -278,10 +306,11 @@ impl Handshake {
             Ok(cipher) => {
                 self.req.cipher = Some(cipher);
                 info!(
-                    "({}) request {}, cihper {}",
+                    "{} - ({}) request {}, cihper {}",
+                    self.peer_addr,
                     user.name,
                     self.req.addr,
-                    cipher
+                    cipher,
                 );
                 Ok(Some(TcpConnect::new(
                     addr,
@@ -291,10 +320,11 @@ impl Handshake {
             }
             Err(_) => {
                 info!(
-                    "({}) request {}, cipher '{}' not support",
+                    "{} - ({}) request {}, cipher '{}' not support",
+                    self.peer_addr,
                     user.name,
                     self.req.addr,
-                    cipher_no
+                    cipher_no,
                 );
                 Ok(None)
             }
@@ -333,7 +363,12 @@ impl Handshake {
                 match KeyPair::generate(user.password.as_ref(), cipher) {
                     Ok(key) => Some(key),
                     Err(e) => {
-                        error!("({}) request generate key, {}", user.name, e);
+                        error!(
+                            "{} - ({}) request generate key, {}",
+                            self.peer_addr,
+                            user.name,
+                            e,
+                        );
                         resp = v3::SERVER_RESP_ERROR;
                         None
                     }
@@ -440,10 +475,11 @@ impl Future for Handshake {
                                 Err(e) => {
                                     let user = self.req.user.as_ref().unwrap();
                                     error!(
-                                        "({}) connect remote {}, {}",
+                                        "{} - ({}) connect remote {}, {}",
+                                        self.peer_addr,
                                         user.name,
                                         self.req.addr,
-                                        e
+                                        e,
                                     )
                                 }
                             }

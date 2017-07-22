@@ -150,6 +150,7 @@ impl Reply {
 
 pub struct Handshake {
     handle: Handle,
+    peer_addr: SocketAddr,
     client: Rc<TcpStream>,
     reply: Rc<Reply>,
     remote_addr: SocketAddr,
@@ -166,11 +167,13 @@ impl Handshake {
     pub fn new(
         handle: Handle,
         reply: Rc<Reply>,
+        peer: SocketAddr,
         client: Rc<TcpStream>,
         remote: SocketAddr,
     ) -> Handshake {
         Handshake {
             handle: handle,
+            peer_addr: peer,
             client: client,
             reply: reply,
             remote_addr: remote,
@@ -292,7 +295,7 @@ impl Future for Handshake {
 
                     let reqaddr = ReqAddr::new(self.buf.get_ref_range(range));
                     let addr = reqaddr.get()?;
-                    info!("request {}:{}", addr.0, addr.1);
+                    info!("{} - request {}:{}", self.peer_addr, addr.0, addr.1);
 
                     self.reqaddr = Some(reqaddr);
                     self.connect = Some(TcpStream::connect(&self.remote_addr, &self.handle));

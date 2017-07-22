@@ -1,4 +1,5 @@
 use std::io;
+use std::fmt;
 use std::rc::Rc;
 use std::net::Shutdown;
 
@@ -10,7 +11,7 @@ use super::crypto::{Cipher, Crypto};
 use super::buffer::{BufRange, SharedBuf};
 
 
-pub fn enc_transfer(
+pub fn encrypt(
     reader: Rc<TcpStream>,
     writer: Rc<TcpStream>,
     cipher: Cipher,
@@ -19,7 +20,7 @@ pub fn enc_transfer(
     future::result(EncTransfer::new(reader, writer, cipher, key)).flatten()
 }
 
-pub fn dec_transfer(
+pub fn decrypt(
     reader: Rc<TcpStream>,
     writer: Rc<TcpStream>,
     cipher: Cipher,
@@ -263,5 +264,38 @@ impl Future for DecTransfer {
                 DecState::Done => panic!("poll a done future"),
             }
         }
+    }
+}
+
+
+#[derive(Copy, Clone, Debug)]
+pub struct Stat {
+    enc_read: u64,
+    enc_write: u64,
+    dec_read: u64,
+    dec_write: u64,
+}
+
+impl Stat {
+    pub fn new(enc: (u64, u64), dec: (u64, u64)) -> Stat {
+        Stat {
+            enc_read: enc.0,
+            enc_write: enc.1,
+            dec_read: dec.0,
+            dec_write: dec.1,
+        }
+    }
+}
+
+impl fmt::Display for Stat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "recv: {}/{} send: {}/{}",
+            self.dec_write,
+            self.dec_read,
+            self.enc_read,
+            self.enc_write
+        )
     }
 }
