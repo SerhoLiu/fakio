@@ -4,18 +4,18 @@
 <dict>
 	<key>Label</key>
 	<string>com.serholiu.fakio</string>
-	<key>WorkingDirectory</key>
-	<string>/Users/SErHo/Applications/Fakio</string>
-	<key>Program</key>
-	<string>fclient</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Path/your/fakio-client</string>
+		<string>/Path/your/client.toml</string>
+	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
 	<true/>
 	<key>StandardErrorPath</key>
-	<string>fakio.log</string>
+	<string>/Path/your/fakio.log</string>
 	<key>StandardOutPath</key>
-	<string>fakio.log</string>
+	<string>/Path/your/fakio.log</string>
 </dict>
 </plist>
-

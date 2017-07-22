@@ -62,7 +62,6 @@ impl Server {
 
             // timeout random [10, 40)
             let secs = (rng.gen::<u8>() % 30 + 10) as u64;
-            println!("timeout {}", secs);
             let timeout = Timeout::new(Duration::new(secs, 0), &handle).unwrap();
             let handshake = handshake.map(Ok).select(timeout.map(Err)).then(
                 |res| match res {
