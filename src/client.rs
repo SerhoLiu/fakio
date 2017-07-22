@@ -79,18 +79,22 @@ impl Client {
             );
 
             let transfer_config = config.clone();
+
             let transfer = handshake.and_then(move |(reqaddr, keypair, server)| {
                 let (ckey, skey) = keypair.split();
-                let trans =
-                    transfer::encrypt(client.clone(), server.clone(), transfer_config.cipher, ckey)
-                        .join(transfer::decrypt(
-                            server.clone(),
-                            client.clone(),
-                            transfer_config.cipher,
-                            skey,
-                        ));
 
-                trans.map(|(enc, dec)| (reqaddr, transfer::Stat::new(enc, dec)))
+                #[cfg_attr(rustfmt, rustfmt_skip)]
+                transfer::encrypt(
+                    client.clone(),
+                    server.clone(),
+                    transfer_config.cipher,
+                    ckey
+                ).join(transfer::decrypt(
+                    server.clone(),
+                    client.clone(),
+                    transfer_config.cipher,
+                    skey,
+                )).map(|(enc, dec)| (reqaddr, transfer::Stat::new(enc, dec)))
             });
 
             handle.spawn(transfer.then(move |res| {
