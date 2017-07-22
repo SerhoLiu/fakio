@@ -32,7 +32,7 @@ mod v3 {
     use crypto::Cipher;
 
     pub const VERSION: u8 = 0x03;
-    pub const MAX_BUFFER_SIZE: usize = 32 * 1024 * 1024;
+    pub const MAX_BUFFER_SIZE: usize = 32 * 1024;
     pub const DATA_LEN_LEN: usize = 2;
     pub const MAX_PADDING_LEN: usize = 255;
 
