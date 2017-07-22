@@ -2,12 +2,32 @@ use std::io;
 use std::rc::Rc;
 use std::net::Shutdown;
 
-use futures::{Future, Poll, Async};
+use futures::{future, Future, Flatten, Poll, Async};
 use tokio_core::net::TcpStream;
 
 use super::v3;
 use super::crypto::{Cipher, Crypto};
 use super::buffer::{BufRange, SharedBuf};
+
+
+pub fn enc_transfer(
+    reader: Rc<TcpStream>,
+    writer: Rc<TcpStream>,
+    cipher: Cipher,
+    key: &[u8],
+) -> Flatten<future::FutureResult<EncTransfer, io::Error>> {
+    future::result(EncTransfer::new(reader, writer, cipher, key)).flatten()
+}
+
+pub fn dec_transfer(
+    reader: Rc<TcpStream>,
+    writer: Rc<TcpStream>,
+    cipher: Cipher,
+    key: &[u8],
+) -> Flatten<future::FutureResult<DecTransfer, io::Error>> {
+    future::result(DecTransfer::new(reader, writer, cipher, key)).flatten()
+}
+
 
 #[derive(Copy, Clone, Debug)]
 enum EncState {
@@ -32,7 +52,7 @@ pub struct EncTransfer {
 }
 
 impl EncTransfer {
-    pub fn new(
+    fn new(
         reader: Rc<TcpStream>,
         writer: Rc<TcpStream>,
         cipher: Cipher,
@@ -153,7 +173,7 @@ pub struct DecTransfer {
 }
 
 impl DecTransfer {
-    pub fn new(
+    fn new(
         reader: Rc<TcpStream>,
         writer: Rc<TcpStream>,
         cipher: Cipher,

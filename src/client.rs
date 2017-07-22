@@ -8,7 +8,7 @@ use tokio_core::net::{TcpStream, TcpListener};
 use super::v3;
 use super::socks5;
 use super::buffer::{BufRange, SharedBuf};
-use super::transfer::{EncTransfer, DecTransfer};
+use super::transfer::{enc_transfer, dec_transfer};
 use super::crypto::{KeyPair, Crypto};
 use super::config::ClientConfig;
 use super::util::RandomBytes;
@@ -32,29 +32,48 @@ impl Client {
         let mut core = reactor::Core::new()?;
         let handle = core.handle();
 
-        let listener = TcpListener::bind(&self.config.listen, &handle).map_err(
-            |e| {
-                other(&format!("bind on {}, {}", self.config.listen, e))
-            },
-        )?;
+        let config = self.config.clone();
+        let socks5_reply = self.socks5_reply.clone();
 
-        info!("Listening for socks5 proxy on local {}", self.config.listen);
+        let listener = TcpListener::bind(&config.listen, &handle).map_err(|e| {
+            other(&format!("bind on {}, {}", config.listen, e))
+        })?;
 
-        let clients = listener.incoming().map(|(conn, addr)| {
-            (
-                Local {
-                    config: self.config.clone(),
-                    handle: handle.clone(),
-                    socks5_reply: self.socks5_reply.clone(),
+        info!("Listening for socks5 proxy on local {}", config.listen);
 
-                    client: conn,
-                }.serve(),
-                addr,
-            )
-        });
+        let clients = listener.incoming().for_each(|(conn, addr)| {
+            let client = Rc::new(conn);
 
-        let server = clients.for_each(|(client, addr)| {
-            handle.spawn(client.then(move |res| {
+            let socks5 = socks5::Handshake::new(
+                handle.clone(),
+                socks5_reply.clone(),
+                client.clone(),
+                config.server,
+            );
+
+            let handshake_config = config.clone();
+            let handshake = socks5.and_then(move |(conn, addr)| {
+                let config = handshake_config.clone();
+                conn.set_nodelay(true).unwrap();
+                let server = Rc::new(conn);
+                match Handshake::new(config, server.clone(), addr) {
+                    Ok(hand) => future::ok(hand.map(|keypair| (keypair, server))),
+                    Err(e) => future::err(e),
+                }.flatten()
+            });
+
+            let transfer_config = config.clone();
+            let transfer = handshake.and_then(move |(keypair, server): (KeyPair, Rc<TcpStream>)| {
+                let (ckey, skey) = keypair.split();
+                let enc =
+                    enc_transfer(client.clone(), server.clone(), transfer_config.cipher, ckey);
+                let dec =
+                    dec_transfer(server.clone(), client.clone(), transfer_config.cipher, skey);
+
+                enc.join(dec)
+            });
+
+            handle.spawn(transfer.then(move |res| {
                 match res {
                     Ok(x) => println!("proxied for {} {:?}", addr, x),
                     Err(e) => println!("error for {}: {}", addr, e),
@@ -64,49 +83,11 @@ impl Client {
             Ok(())
         });
 
-        core.run(server).unwrap();
+        core.run(clients).unwrap();
         Ok(())
     }
 }
 
-struct Local {
-    config: Rc<ClientConfig>,
-    socks5_reply: Rc<socks5::Reply>,
-    handle: reactor::Handle,
-
-    client: TcpStream,
-}
-
-impl Local {
-    fn serve(self) -> Box<Future<Item = ((u64, u64), (u64, u64)), Error = io::Error>> {
-        let handle = self.handle.clone();
-        let config = self.config.clone();
-        let reply = self.socks5_reply.clone();
-
-        let server = config.server;
-        let cipher = config.cipher;
-        let client = Rc::new(self.client);
-
-        let handshake = socks5::Handshake::new(handle, reply, client.clone(), server)
-            .and_then(move |(conn, addr)| {
-                conn.set_nodelay(true).unwrap();
-                let server = Rc::new(conn);
-                match Handshake::new(config.clone(), server.clone(), addr) {
-                    Ok(hand) => mybox(hand.map(|keypair| (keypair, server))),
-                    Err(e) => mybox(future::err(e)),
-                }
-            })
-            .and_then(move |(keypair, server): (KeyPair, Rc<TcpStream>)| {
-                let (ckey, skey) = keypair.split();
-                let enc = EncTransfer::new(client.clone(), server.clone(), cipher, ckey).unwrap();
-                let dec = DecTransfer::new(server.clone(), client.clone(), cipher, skey).unwrap();
-
-                enc.join(dec)
-            });
-
-        mybox(handshake)
-    }
-}
 
 #[derive(Copy, Clone, Debug)]
 enum HandshakeState {
@@ -259,8 +240,12 @@ impl Future for Handshake {
                     // +-----+---------+
                     // |  2  |   Var.  |
                     // +-----+---------+
-                    assert!(len == v3::DATA_LEN_LEN);
+                    debug_assert!(len == v3::DATA_LEN_LEN);
                     let data_len = ((buf[0] as usize) << 8) + (buf[1] as usize);
+                    // Padding len 1 + resp 1
+                    if data_len < 2 + self.crypto.tag_len() {
+                        return Err(other("response data length too small"));
+                    }
 
                     self.state = HandshakeState::ServerRespData(BufRange {
                         start: 0,
@@ -284,6 +269,10 @@ impl Future for Handshake {
                         end: range.start + len,
                     });
                     let padding_len = (buf[0] as usize) + 1;
+                    if len < padding_len + 1 {
+                        return Err(other("response data length too small"));
+                    }
+
                     match buf[padding_len] {
                         v3::SERVER_RESP_SUCCESSD => debug!("server resp success"),
                         v3::SERVER_RESP_CIPHER_ERROR => {
@@ -314,8 +303,4 @@ impl Future for Handshake {
 
 fn other(desc: &str) -> io::Error {
     io::Error::new(io::ErrorKind::Other, desc)
-}
-
-fn mybox<F: Future + 'static>(f: F) -> Box<Future<Item = F::Item, Error = F::Error>> {
-    Box::new(f)
 }

@@ -13,8 +13,8 @@ use super::socks5;
 use super::net::TcpConnect;
 use super::util::RandomBytes;
 use super::buffer::{BufRange, SharedBuf};
-use super::transfer::{EncTransfer, DecTransfer};
-use super::crypto::{self, KeyPair, Cipher, Crypto};
+use super::transfer::{enc_transfer, dec_transfer};
+use super::crypto::{KeyPair, Cipher, Crypto};
 use super::config::{Digest, User, ServerConfig};
 
 
@@ -56,19 +56,19 @@ impl Server {
             ).and_then(move |context| {
                 let (ckey, skey) = context.keypair.split();
 
-                let enc = EncTransfer::new(
+                let enc = enc_transfer(
                     context.remote.clone(),
                     context.client.clone(),
                     context.cipher,
                     skey,
-                ).unwrap();
+                );
 
-                let dec = DecTransfer::new(
+                let dec = dec_transfer(
                     context.client.clone(),
                     context.remote.clone(),
                     context.cipher,
                     ckey,
-                ).unwrap();
+                );
 
                 enc.join(dec)
             });
