@@ -1,14 +1,14 @@
-use std::io;
 use std::fmt;
-use std::rc::Rc;
+use std::io;
 use std::net::Shutdown;
+use std::rc::Rc;
 
-use futures::{future, Future, Flatten, Poll, Async};
+use futures::{future, Async, Flatten, Future, Poll};
 use tokio_core::net::TcpStream;
 
-use super::v3;
-use super::crypto::{Cipher, Crypto};
 use super::buffer::{BufRange, SharedBuf};
+use super::crypto::{Cipher, Crypto};
+use super::v3;
 
 
 pub fn encrypt(

@@ -1,12 +1,12 @@
-use std::io;
 use std::env;
 use std::fmt;
+use std::io;
 
-use time;
 use ansi_term::Color;
-use ring::rand::{SecureRandom, SystemRandom};
-use log::{LogLevel, LogRecord, LogLevelFilter};
 use env_logger::LogBuilder;
+use log::{LogLevel, LogLevelFilter, LogRecord};
+use ring::rand::{SecureRandom, SystemRandom};
+use time;
 
 use super::v3::MAX_PADDING_LEN;
 
@@ -72,15 +72,17 @@ impl RandomBytes {
         let rand = SystemRandom::new();
 
         // 1. rand len
-        rand.fill(&mut padding[..1]).map_err(|e| {
-            io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
-        })?;
+        rand.fill(&mut padding[..1])
+            .map_err(|e| {
+                io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
+            })?;
 
         // 2. rand data
         let len = padding[0] as usize;
-        rand.fill(&mut padding[1..len + 1]).map_err(|e| {
-            io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
-        })?;
+        rand.fill(&mut padding[1..len + 1])
+            .map_err(|e| {
+                io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
+            })?;
         Ok(RandomBytes {
             len: len,
             bytes: padding,

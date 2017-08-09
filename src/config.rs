@@ -1,17 +1,17 @@
-use std::error;
 use std::borrow;
-use std::result;
+use std::collections::HashMap;
+use std::error;
 use std::fs::File;
 use std::io::Read;
-use std::collections::HashMap;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::result;
 
-use toml;
-use serde::de;
 use ring::digest;
+use serde::de;
+use toml;
 
-use super::v3;
 use super::crypto::Cipher;
+use super::v3;
 
 
 pub type Result<T> = result::Result<T, Box<error::Error>>;
@@ -46,7 +46,9 @@ pub struct ServerConfig {
 
 impl Digest {
     fn new(value: &str) -> Digest {
-        let mut d = Digest { value: [0u8; v3::DEFAULT_DIGEST_LEN] };
+        let mut d = Digest {
+            value: [0u8; v3::DEFAULT_DIGEST_LEN],
+        };
         d.value.copy_from_slice(
             digest::digest(v3::DEFAULT_DIGEST, value.as_bytes()).as_ref(),
         );
@@ -84,9 +86,9 @@ impl ClientConfig {
             .map(|mut addrs| addrs.nth(0).unwrap())
             .map_err(|err| format!("resolve server {}, {}", raw.server, err))?;
 
-        let listen = raw.listen.parse::<SocketAddr>().map_err(|err| {
-            format!("parse listen {}, {}", raw.listen, err)
-        })?;
+        let listen = raw.listen
+            .parse::<SocketAddr>()
+            .map_err(|err| format!("parse listen {}, {}", raw.listen, err))?;
 
         Ok(ClientConfig {
             username: Digest::new(&raw.username),
@@ -103,9 +105,10 @@ impl ServerConfig {
     pub fn new(path: &str) -> Result<ServerConfig> {
         let raw: TomlServerConfig = read_toml_config(path)?;
 
-        let listen = raw.server.listen.parse::<SocketAddr>().map_err(|err| {
-            format!("parse listen {}, {}", raw.server.listen, err)
-        })?;
+        let listen = raw.server
+            .listen
+            .parse::<SocketAddr>()
+            .map_err(|err| format!("parse listen {}, {}", raw.server.listen, err))?;
 
         let mut users = HashMap::new();
 

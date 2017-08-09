@@ -1,8 +1,8 @@
-use std::io;
 use std::fmt;
+use std::io;
 use std::result;
 
-use ring::{aead, hkdf, hmac, digest, rand};
+use ring::{aead, digest, hkdf, hmac, rand};
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -153,16 +153,14 @@ impl Crypto {
         if open_key.len() != key_len {
             return Err(Error::KeyLenNotMatch(key_len));
         }
-        let open_key = aead::OpeningKey::new(aead, open_key).map_err(
-            |_| Error::OpenKey,
-        )?;
+        let open_key = aead::OpeningKey::new(aead, open_key)
+            .map_err(|_| Error::OpenKey)?;
 
         if seal_key.len() != key_len {
             return Err(Error::KeyLenNotMatch(key_len));
         }
-        let seal_key = aead::SealingKey::new(aead, seal_key).map_err(
-            |_| Error::SealKey,
-        )?;
+        let seal_key = aead::SealingKey::new(aead, seal_key)
+            .map_err(|_| Error::SealKey)?;
 
         let nonce_len = aead.nonce_len();
 

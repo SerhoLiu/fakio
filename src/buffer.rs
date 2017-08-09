@@ -2,7 +2,7 @@
 
 use std::io::{self, Read, Write};
 
-use futures::{Poll, Async};
+use futures::{Async, Poll};
 
 
 #[derive(Copy, Clone, Debug)]

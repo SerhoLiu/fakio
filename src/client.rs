@@ -2,17 +2,17 @@ use std::io;
 use std::rc::Rc;
 use std::time::Duration;
 
-use futures::{future, Future, Stream, Poll, Async};
-use tokio_core::net::{TcpStream, TcpListener};
+use futures::{future, Async, Future, Poll, Stream};
+use tokio_core::net::{TcpListener, TcpStream};
 use tokio_core::reactor::{Core, Timeout};
 
-use super::v3;
+use super::buffer::{BufRange, SharedBuf};
+use super::config::ClientConfig;
+use super::crypto::{Crypto, KeyPair};
 use super::socks5;
 use super::transfer;
-use super::buffer::{BufRange, SharedBuf};
-use super::crypto::{KeyPair, Crypto};
-use super::config::ClientConfig;
 use super::util::RandomBytes;
+use super::v3;
 
 
 const HANDSHAKE_TIMEOUT: u64 = 10;
@@ -39,9 +39,8 @@ impl Client {
         let config = self.config.clone();
         let socks5_reply = self.socks5_reply.clone();
 
-        let listener = TcpListener::bind(&config.listen, &handle).map_err(|e| {
-            other(&format!("bind on {}, {}", config.listen, e))
-        })?;
+        let listener = TcpListener::bind(&config.listen, &handle)
+            .map_err(|e| other(&format!("bind on {}, {}", config.listen, e)))?;
 
         info!("Listening for socks5 proxy on local {}", config.listen);
 
@@ -171,10 +170,8 @@ impl Handshake {
             start: header_len,
             end: header_len + v3::DEFAULT_DIGEST_LEN,
         };
-        self.buf.copy_from_slice(
-            range,
-            self.config.username.as_ref(),
-        );
+        self.buf
+            .copy_from_slice(range, self.config.username.as_ref());
 
         // PADDING
         let random_bytes = RandomBytes::new()?;

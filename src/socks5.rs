@@ -1,12 +1,12 @@
 //! Socks5 protocol definition ([RFC1928](https://tools.ietf.org/rfc/rfc1928.txt))
 
 use std::io;
-use std::str;
 use std::mem;
-use std::rc::Rc;
 use std::net::{self, SocketAddr};
+use std::rc::Rc;
+use std::str;
 
-use futures::{Poll, Future, Async};
+use futures::{Async, Future, Poll};
 use tokio_core::net::{TcpStream, TcpStreamNew};
 use tokio_core::reactor::Handle;
 
@@ -82,9 +82,8 @@ impl ReqAddr {
             }
             ADDR_TYPE_DOMAIN_NAME => {
                 let len = buf[0] as usize;
-                let domain = String::from_utf8(buf[1..len + 1].to_vec()).map_err(|e| {
-                    other(&format!("domain not valid utf-8, {}", e))
-                })?;
+                let domain = String::from_utf8(buf[1..len + 1].to_vec())
+                    .map_err(|e| other(&format!("domain not valid utf-8, {}", e)))?;
                 let pos = buf.len() - 2;
                 let port = ((buf[pos] as u16) << 8) | (buf[pos + 1] as u16);
                 Ok((domain, port))
@@ -306,24 +305,22 @@ impl Future for Handshake {
                 HandshakeState::ConnectServer => {
                     // now, connect remote server
                     let rtype = match self.connect {
-                        Some(ref mut s) => {
-                            match s.poll() {
-                                Ok(Async::Ready(conn)) => {
-                                    self.remote = Ok(conn);
-                                    REPLY_SUCCEEDED
-                                }
-                                Ok(Async::NotReady) => return Ok(Async::NotReady),
-                                Err(e) => {
-                                    let kind = e.kind();
-                                    self.remote = Err(e);
-                                    if kind == io::ErrorKind::ConnectionRefused {
-                                        REPLY_CONNECTION_REFUSED
-                                    } else {
-                                        REPLY_GENERAL_FAILURE
-                                    }
+                        Some(ref mut s) => match s.poll() {
+                            Ok(Async::Ready(conn)) => {
+                                self.remote = Ok(conn);
+                                REPLY_SUCCEEDED
+                            }
+                            Ok(Async::NotReady) => return Ok(Async::NotReady),
+                            Err(e) => {
+                                let kind = e.kind();
+                                self.remote = Err(e);
+                                if kind == io::ErrorKind::ConnectionRefused {
+                                    REPLY_CONNECTION_REFUSED
+                                } else {
+                                    REPLY_GENERAL_FAILURE
                                 }
                             }
-                        }
+                        },
                         None => panic!("connect server on illegal state"),
                     };
 

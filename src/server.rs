@@ -1,24 +1,24 @@
+use std::collections::HashMap;
 use std::io;
 use std::mem;
+use std::net::SocketAddr;
 use std::rc::Rc;
 use std::time::Duration;
-use std::net::SocketAddr;
-use std::collections::HashMap;
 
-use rand::{self, Rng};
-use futures::{future, Future, Stream, Poll, Async};
+use futures::{future, Async, Future, Poll, Stream};
 use futures_cpupool::CpuPool;
-use tokio_core::net::{TcpStream, TcpListener};
+use rand::{self, Rng};
+use tokio_core::net::{TcpListener, TcpStream};
 use tokio_core::reactor::{Core, Handle, Timeout};
 
-use super::v3;
+use super::buffer::{BufRange, SharedBuf};
+use super::config::{Digest, ServerConfig, User};
+use super::crypto::{Cipher, Crypto, KeyPair};
+use super::net::TcpConnect;
 use super::socks5;
 use super::transfer;
-use super::net::TcpConnect;
 use super::util::{self, RandomBytes};
-use super::buffer::{BufRange, SharedBuf};
-use super::crypto::{KeyPair, Cipher, Crypto};
-use super::config::{Digest, User, ServerConfig};
+use super::v3;
 
 
 pub struct Server {
@@ -43,9 +43,8 @@ impl Server {
         let listen = self.config.listen;
         let mut rng = rand::thread_rng();
 
-        let listener = TcpListener::bind(&listen, &handle).map_err(|e| {
-            other(&format!("bind on {}, {}", listen, e))
-        })?;
+        let listener = TcpListener::bind(&listen, &handle)
+            .map_err(|e| other(&format!("bind on {}, {}", listen, e)))?;
 
         info!("Listening on {}", listen);
 
@@ -94,15 +93,13 @@ impl Server {
 
             handle.spawn(transfer.then(move |res| {
                 match res {
-                    Ok((user, req, stat)) => {
-                        info!(
-                            "{} - ({}) request {} success, {}",
-                            addr,
-                            user.name,
-                            req,
-                            stat,
-                        )
-                    }
+                    Ok((user, req, stat)) => info!(
+                        "{} - ({}) request {} success, {}",
+                        addr,
+                        user.name,
+                        req,
+                        stat,
+                    ),
                     Err(e) => error!("{} - failed by {}", addr, e),
                 }
                 future::ok(())
@@ -209,10 +206,9 @@ impl Handshake {
                 start: range.end - v3::DEFAULT_DIGEST_LEN,
                 end: range.end,
             });
-            self.users.get(user).ok_or(other(&format!(
-                "user ({}) not exists",
-                util::to_hex(user)
-            )))?
+            self.users
+                .get(user)
+                .ok_or(other(&format!("user ({}) not exists", util::to_hex(user))))?
         };
 
         let mut crypto = Crypto::new(
@@ -363,21 +359,19 @@ impl Handshake {
         let mut resp = v3::SERVER_RESP_SUCCESSD;
 
         self.req.keypair = match self.req.cipher {
-            Some(cipher) => {
-                match KeyPair::generate(user.password.as_ref(), cipher) {
-                    Ok(key) => Some(key),
-                    Err(e) => {
-                        error!(
-                            "{} - ({}) request generate key, {}",
-                            self.peer_addr,
-                            user.name,
-                            e,
-                        );
-                        resp = v3::SERVER_RESP_ERROR;
-                        None
-                    }
+            Some(cipher) => match KeyPair::generate(user.password.as_ref(), cipher) {
+                Ok(key) => Some(key),
+                Err(e) => {
+                    error!(
+                        "{} - ({}) request generate key, {}",
+                        self.peer_addr,
+                        user.name,
+                        e,
+                    );
+                    resp = v3::SERVER_RESP_ERROR;
+                    None
                 }
-            }
+            },
             None => {
                 resp = v3::SERVER_RESP_CIPHER_ERROR;
                 None
@@ -472,22 +466,20 @@ impl Future for Handshake {
                 }
                 HandshakeState::ConnectRemote => {
                     match self.req.connect {
-                        Some(ref mut s) => {
-                            match s.poll() {
-                                Ok(Async::Ready(conn)) => self.req.remote = Some(conn),
-                                Ok(Async::NotReady) => return Ok(Async::NotReady),
-                                Err(e) => {
-                                    let user = self.req.user.as_ref().unwrap();
-                                    error!(
-                                        "{} - ({}) connect remote {}, {}",
-                                        self.peer_addr,
-                                        user.name,
-                                        self.req.addr,
-                                        e,
-                                    )
-                                }
+                        Some(ref mut s) => match s.poll() {
+                            Ok(Async::Ready(conn)) => self.req.remote = Some(conn),
+                            Ok(Async::NotReady) => return Ok(Async::NotReady),
+                            Err(e) => {
+                                let user = self.req.user.as_ref().unwrap();
+                                error!(
+                                    "{} - ({}) connect remote {}, {}",
+                                    self.peer_addr,
+                                    user.name,
+                                    self.req.addr,
+                                    e,
+                                )
                             }
-                        }
+                        },
                         None => panic!("connect server on illegal state"),
                     };
                     self.state = HandshakeState::GenResponse;

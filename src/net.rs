@@ -1,9 +1,9 @@
 use std::io;
-use std::vec::IntoIter;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::vec::IntoIter;
 
-use futures::{Future, Poll, Async};
-use futures_cpupool::{CpuPool, CpuFuture};
+use futures::{Async, Future, Poll};
+use futures_cpupool::{CpuFuture, CpuPool};
 use tokio_core::net::{TcpStream, TcpStreamNew};
 use tokio_core::reactor::Handle;
 

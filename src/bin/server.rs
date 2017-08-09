@@ -5,7 +5,7 @@ extern crate fakio;
 use std::env;
 use std::process;
 
-use fakio::{config, util, server};
+use fakio::{config, server, util};
 
 
 fn main() {
