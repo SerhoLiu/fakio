@@ -1,8 +1,11 @@
 ## Fakio
 
-保障你的数据传输安全
+Protect your data transmission security.
 
 ## License
 
 MIT LICENSE, see MIT-LICENSE.txt
 
+## Warning
+
+IGNORANCE IS STRENGTH
