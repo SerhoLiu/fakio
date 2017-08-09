@@ -1,0 +1,13 @@
+[Unit]
+Description=fakio server
+After=network-online.target remote-fs.target nss-lookup.target
+
+[Service]
+ExecStart=/path/your/fakio-server server.toml
+Restart=always
+User=yourname
+Group=yourgroup
+WorkingDirectory=/path/your/work
+
+[Install]
+WantedBy=multi-user.target
