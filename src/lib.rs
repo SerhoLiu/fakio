@@ -21,11 +21,10 @@ mod buffer;
 mod crypto;
 mod socks5;
 mod transfer;
-
-pub mod config;
-pub mod client;
-pub mod server;
-pub mod util;
+mod config;
+mod client;
+mod server;
+mod util;
 
 mod v3 {
     use ring::digest::{Algorithm, SHA256, SHA256_OUTPUT_LEN};
@@ -49,3 +48,8 @@ mod v3 {
     pub const SERVER_RESP_ERROR: u8 = 0x02;
     pub const SERVER_RESP_REMOTE_FAILED: u8 = 0x03;
 }
+
+pub use client::Client;
+pub use config::{ClientConfig, ServerConfig};
+pub use server::Server;
+pub use util::init_logger;
