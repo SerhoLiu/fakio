@@ -140,7 +140,7 @@ impl Future for EncTransfer {
                     }
                 }
                 EncState::Shutdown => {
-                    try_nb!((&mut (&*self.writer)).shutdown(Shutdown::Write));
+                    try_nb!((&*self.writer).shutdown(Shutdown::Write));
                     self.state = EncState::Done;
                     return Ok(Async::Ready((self.nread, self.nwrite)));
                 }
@@ -233,7 +233,7 @@ impl Future for DecTransfer {
                     // +-----+---------+
                     // | LEN | LEN TAG |
                     // +-----+---------+
-                    assert!(len == v3::DATA_LEN_LEN);
+                    assert_eq!(len, v3::DATA_LEN_LEN);
                     let data_len = ((buf[0] as usize) << 8) + (buf[1] as usize);
 
                     self.nread += (data_len + range.end) as u64;
@@ -257,7 +257,7 @@ impl Future for DecTransfer {
                     self.state = DecState::TryReadHead;
                 }
                 DecState::Shutdown => {
-                    try_nb!((&mut (&*self.writer)).shutdown(Shutdown::Write));
+                    try_nb!((&*self.writer).shutdown(Shutdown::Write));
                     self.state = DecState::Done;
                     return Ok(Async::Ready((self.nread, self.nwrite)));
                 }

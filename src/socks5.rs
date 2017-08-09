@@ -52,7 +52,7 @@ impl ReqAddr {
     }
 
     #[inline]
-    pub fn get_bytes<'a>(&'a self) -> &'a [u8] {
+    pub fn get_bytes(&self) -> &[u8] {
         &self.bytes[..self.len]
     }
 
@@ -121,7 +121,7 @@ impl Reply {
             SocketAddr::V6(ref a) => {
                 buf[3] = ADDR_TYPE_IPV6;
                 let mut pos = 4;
-                for &segment in a.ip().segments().iter() {
+                for &segment in &a.ip().segments() {
                     buf[pos] = (segment >> 8) as u8;
                     buf[pos + 1] = segment as u8;
                     pos += 2;

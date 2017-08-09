@@ -54,7 +54,7 @@ pub fn init_logger() {
 }
 
 
-/// MAX_PADDING_LEN 255
+/// `MAX_PADDING_LEN 255`
 ///
 /// +-------+----------+
 /// |  len  |   bytes  |
@@ -90,7 +90,7 @@ impl RandomBytes {
     }
 
     #[inline]
-    pub fn get<'a>(&'a self) -> &'a [u8] {
+    pub fn get(&self) -> &[u8] {
         &self.bytes[..self.len + 1]
     }
 }

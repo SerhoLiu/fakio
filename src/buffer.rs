@@ -100,7 +100,7 @@ impl SharedBuf {
         reader: &mut R,
         range: BufRange,
     ) -> Poll<(bool, BufRange), io::Error> {
-        assert!(self.state != BufState::Writeing);
+        assert_ne!(self.state, BufState::Writeing);
 
         self.state = BufState::Reading;
 
@@ -146,7 +146,7 @@ impl SharedBuf {
         reader: &mut R,
         range: BufRange,
     ) -> Poll<BufRange, io::Error> {
-        assert!(self.state != BufState::Writeing);
+        assert_ne!(self.state, BufState::Writeing);
 
         self.state = BufState::Reading;
 
@@ -172,7 +172,7 @@ impl SharedBuf {
         writer: &mut W,
         range: BufRange,
     ) -> Poll<BufRange, io::Error> {
-        assert!(self.state != BufState::Reading);
+        assert_ne!(self.state, BufState::Reading);
 
         self.state = BufState::Writeing;
 

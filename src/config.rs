@@ -1,5 +1,6 @@
 use std::borrow;
 use std::collections::HashMap;
+use std::convert;
 use std::error;
 use std::fs::File;
 use std::io::Read;
@@ -56,19 +57,20 @@ impl Digest {
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
+    pub fn size(&self) -> usize {
         v3::DEFAULT_DIGEST_LEN
     }
+}
 
-    #[inline]
-    pub fn as_ref<'a>(&'a self) -> &'a [u8] {
+impl convert::AsRef<[u8]> for Digest {
+    fn as_ref(&self) -> &[u8] {
         &self.value
     }
 }
 
 impl borrow::Borrow<[u8]> for Digest {
     fn borrow(&self) -> &[u8] {
-        self.as_ref()
+        &self.value
     }
 }
 

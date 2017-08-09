@@ -208,7 +208,9 @@ impl Handshake {
             });
             self.users
                 .get(user)
-                .ok_or(other(&format!("user ({}) not exists", util::to_hex(user))))?
+                .ok_or_else(|| {
+                    other(&format!("user ({}) not exists", util::to_hex(user)))
+                })?
         };
 
         let mut crypto = Crypto::new(
@@ -222,7 +224,7 @@ impl Handshake {
         });
 
         let size = crypto.decrypt(header)?;
-        debug_assert!(size == v3::DATA_LEN_LEN);
+        debug_assert_eq!(size, v3::DATA_LEN_LEN);
 
         let len = ((header[0] as usize) << 8) + (header[1] as usize);
         if len <= v3::DEFAULT_DIGEST_LEN + crypto.tag_len() {

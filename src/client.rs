@@ -263,7 +263,7 @@ impl Future for Handshake {
                     // +-----+---------+
                     // |  2  |   Var.  |
                     // +-----+---------+
-                    debug_assert!(len == v3::DATA_LEN_LEN);
+                    debug_assert_eq!(len, v3::DATA_LEN_LEN);
                     let data_len = ((buf[0] as usize) << 8) + (buf[1] as usize);
                     // Padding len 1 + resp 1
                     if data_len < 2 + self.crypto.tag_len() {

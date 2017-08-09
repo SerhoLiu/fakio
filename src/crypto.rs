@@ -197,7 +197,7 @@ impl Crypto {
             &mut inout[..out_len],
             self.tag_len,
         ) {
-            Ok(outlen) => debug_assert!(out_len == outlen),
+            Ok(outlen) => debug_assert_eq!(out_len, outlen),
             Err(_) => return Err(Error::Seal),
         };
 
