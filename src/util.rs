@@ -72,17 +72,15 @@ impl RandomBytes {
         let rand = SystemRandom::new();
 
         // 1. rand len
-        rand.fill(&mut padding[..1])
-            .map_err(|e| {
-                io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
-            })?;
+        rand.fill(&mut padding[..1]).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
+        })?;
 
         // 2. rand data
         let len = padding[0] as usize;
-        rand.fill(&mut padding[1..len + 1])
-            .map_err(|e| {
-                io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
-            })?;
+        rand.fill(&mut padding[1..len + 1]).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
+        })?;
         Ok(RandomBytes {
             len: len,
             bytes: padding,

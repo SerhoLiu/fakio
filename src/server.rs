@@ -62,13 +62,14 @@ impl Server {
             // timeout random [10, 40)
             let secs = (rng.gen::<u8>() % 30 + 10) as u64;
             let timeout = Timeout::new(Duration::new(secs, 0), &handle).unwrap();
-            let handshake = handshake.map(Ok).select(timeout.map(Err)).then(
-                |res| match res {
+            let handshake = handshake
+                .map(Ok)
+                .select(timeout.map(Err))
+                .then(|res| match res {
                     Ok((Ok(hand), _timeout)) => Ok(hand),
                     Ok((Err(()), _handshake)) => Err(other("handshake timeout")),
                     Err((e, _other)) => Err(e),
-                },
-            );
+                });
 
             let transfer = handshake.and_then(move |context| {
                 let (ckey, skey) = context.keypair.split();
@@ -206,11 +207,9 @@ impl Handshake {
                 start: range.end - v3::DEFAULT_DIGEST_LEN,
                 end: range.end,
             });
-            self.users
-                .get(user)
-                .ok_or_else(|| {
-                    other(&format!("user ({}) not exists", util::to_hex(user)))
-                })?
+            self.users.get(user).ok_or_else(|| {
+                other(&format!("user ({}) not exists", util::to_hex(user)))
+            })?
         };
 
         let mut crypto = Crypto::new(
@@ -442,7 +441,6 @@ impl Future for Handshake {
     fn poll(&mut self) -> Poll<Context, io::Error> {
         loop {
             match self.state {
-
                 // +-----+---------+------+
                 // | LEN | LEN TAG | USER |
                 // +-----+---------+------+

@@ -1,6 +1,6 @@
+extern crate fakio;
 #[macro_use]
 extern crate log;
-extern crate fakio;
 
 use std::env;
 use std::process;

@@ -49,7 +49,6 @@ impl Cipher {
             Cipher::AES128GCM => 1,
             Cipher::AES256GCM => 2,
             Cipher::CHACHA20POLY1305 => 3,
-
         }
     }
 
@@ -68,7 +67,6 @@ impl Cipher {
             Cipher::AES128GCM => &aead::AES_128_GCM,
             Cipher::AES256GCM => &aead::AES_256_GCM,
             Cipher::CHACHA20POLY1305 => &aead::CHACHA20_POLY1305,
-
         }
     }
 }
@@ -153,14 +151,12 @@ impl Crypto {
         if open_key.len() != key_len {
             return Err(Error::KeyLenNotMatch(key_len));
         }
-        let open_key = aead::OpeningKey::new(aead, open_key)
-            .map_err(|_| Error::OpenKey)?;
+        let open_key = aead::OpeningKey::new(aead, open_key).map_err(|_| Error::OpenKey)?;
 
         if seal_key.len() != key_len {
             return Err(Error::KeyLenNotMatch(key_len));
         }
-        let seal_key = aead::SealingKey::new(aead, seal_key)
-            .map_err(|_| Error::SealKey)?;
+        let seal_key = aead::SealingKey::new(aead, seal_key).map_err(|_| Error::SealKey)?;
 
         let nonce_len = aead.nonce_len();
 
@@ -270,8 +266,8 @@ mod test {
         let mut nonce = [0u8; 4];
         for i in 1..1024 {
             super::incr_nonce(&mut nonce);
-            let x = (nonce[0] as usize) + ((nonce[1] as usize) << 8) +
-                ((nonce[2] as usize) << 16) + ((nonce[3] as usize) << 24);
+            let x = (nonce[0] as usize) + ((nonce[1] as usize) << 8) + ((nonce[2] as usize) << 16)
+                + ((nonce[3] as usize) << 24);
             assert!(x == i);
         }
     }

@@ -1,20 +1,20 @@
-#[macro_use]
-extern crate log;
-extern crate time;
-extern crate rand;
-extern crate ring;
-extern crate toml;
-extern crate serde;
 extern crate ansi_term;
 extern crate env_logger;
-#[macro_use]
-extern crate serde_derive;
 #[macro_use]
 extern crate futures;
 extern crate futures_cpupool;
 #[macro_use]
-extern crate tokio_io;
+extern crate log;
+extern crate rand;
+extern crate ring;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate time;
 extern crate tokio_core;
+#[macro_use]
+extern crate tokio_io;
+extern crate toml;
 
 mod net;
 mod buffer;

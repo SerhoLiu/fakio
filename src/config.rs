@@ -50,8 +50,10 @@ impl Digest {
         let mut d = Digest {
             value: [0u8; v3::DEFAULT_DIGEST_LEN],
         };
+
+        #[cfg_attr(rustfmt, rustfmt_skip)]
         d.value.copy_from_slice(
-            digest::digest(v3::DEFAULT_DIGEST, value.as_bytes()).as_ref(),
+            digest::digest(v3::DEFAULT_DIGEST, value.as_bytes()).as_ref()
         );
         d
     }

@@ -71,13 +71,14 @@ impl Client {
             });
 
             let timeout = Timeout::new(timeout, &handle).unwrap();
-            let handshake = handshake.map(Ok).select(timeout.map(Err)).then(
-                |res| match res {
+            let handshake = handshake
+                .map(Ok)
+                .select(timeout.map(Err))
+                .then(|res| match res {
                     Ok((Ok(hand), _timeout)) => Ok(hand),
                     Ok((Err(()), _handshake)) => Err(other("handshake timeout")),
                     Err((e, _other)) => Err(e),
-                },
-            );
+                });
 
             let transfer_config = config.clone();
 
