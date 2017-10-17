@@ -8,8 +8,8 @@ release:
 	cargo build --release
 
 lint:
-	rustup run nightly cargo clippy
+	cargo +nightly clippy
 
 format:
-	rustup run nightly cargo fmt -- --write-mode diff || exit 0
-	rustup run nightly cargo fmt -- --write-mode overwrite || exit 0
+	cargo +nightly fmt -- --write-mode diff || exit 0
+	cargo +nightly fmt -- --write-mode overwrite || exit 0
