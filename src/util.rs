@@ -113,7 +113,7 @@ mod test {
                 let size = bytes[0] as usize;
                 assert_eq!(size + 1, bytes.len());
             }
-            Err(e) => assert_eq!(e.kind() == ErrorKind::Other),
+            Err(e) => assert_eq!(e.kind(), ErrorKind::Other),
         }
     }
 }
