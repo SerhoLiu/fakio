@@ -23,6 +23,12 @@ matrix:
       rust: nightly
       env: TARGET=x86_64-unknown-linux-gnu
 
+addons:
+  apt:
+    packages:
+      # needed for linux-musl target
+      - musl-tools
+
 env:
   global:
     # Default target on travis-ci.
