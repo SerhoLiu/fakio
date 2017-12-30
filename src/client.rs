@@ -14,7 +14,6 @@ use super::transfer;
 use super::util::RandomBytes;
 use super::v3;
 
-
 const HANDSHAKE_TIMEOUT: u64 = 10;
 
 pub struct Client {
@@ -113,7 +112,6 @@ impl Client {
         Ok(())
     }
 }
-
 
 #[derive(Copy, Clone, Debug)]
 enum HandshakeState {

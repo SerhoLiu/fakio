@@ -77,9 +77,7 @@ impl Default for Cipher {
     }
 }
 
-
 const INFO_KEY: &'static str = "hello kelsi";
-
 
 #[derive(Debug)]
 pub struct KeyPair {
@@ -125,7 +123,6 @@ impl AsRef<[u8]> for KeyPair {
         self.value.as_ref()
     }
 }
-
 
 #[allow(dead_code)]
 pub struct Crypto {
@@ -256,7 +253,6 @@ impl fmt::Display for Cipher {
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {

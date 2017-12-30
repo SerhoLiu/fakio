@@ -4,7 +4,6 @@ use std::io::{self, Read, Write};
 
 use futures::{Async, Poll};
 
-
 #[derive(Copy, Clone, Debug)]
 pub struct BufRange {
     pub start: usize,

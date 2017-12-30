@@ -7,7 +7,6 @@ use std::process;
 
 use fakio::{Server, ServerConfig};
 
-
 fn main() {
     fakio::init_logger();
 

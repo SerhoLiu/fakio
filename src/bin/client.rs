@@ -7,7 +7,6 @@ use std::process;
 
 use fakio::{Client, ClientConfig};
 
-
 fn main() {
     fakio::init_logger();
 

@@ -10,7 +10,6 @@ use time;
 
 use super::v3::MAX_PADDING_LEN;
 
-
 struct ColorLevel(LogLevel);
 
 impl fmt::Display for ColorLevel {
@@ -53,7 +52,6 @@ pub fn init_logger() {
     builder.init().unwrap();
 }
 
-
 /// `MAX_PADDING_LEN 255`
 ///
 /// +-------+----------+
@@ -72,15 +70,13 @@ impl RandomBytes {
         let rand = SystemRandom::new();
 
         // 1. rand len
-        rand.fill(&mut padding[..1]).map_err(|e| {
-            io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
-        })?;
+        rand.fill(&mut padding[..1])
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e)))?;
 
         // 2. rand data
         let len = padding[0] as usize;
-        rand.fill(&mut padding[1..len + 1]).map_err(|e| {
-            io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e))
-        })?;
+        rand.fill(&mut padding[1..len + 1])
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e)))?;
         Ok(RandomBytes {
             len: len,
             bytes: padding,
@@ -92,7 +88,6 @@ impl RandomBytes {
         &self.bytes[..self.len + 1]
     }
 }
-
 
 static CHARS: &'static [u8] = b"0123456789abcdef";
 
@@ -106,7 +101,6 @@ pub fn to_hex(slice: &[u8]) -> String {
     unsafe { String::from_utf8_unchecked(v) }
 }
 
-
 #[cfg(test)]
 mod test {
     use std::io::ErrorKind;
@@ -117,9 +111,9 @@ mod test {
             Ok(r) => {
                 let bytes = r.get();
                 let size = bytes[0] as usize;
-                assert!(size + 1 == bytes.len());
+                assert_eq!(size + 1, bytes.len());
             }
-            Err(e) => assert!(e.kind() == ErrorKind::Other),
+            Err(e) => assert_eq!(e.kind() == ErrorKind::Other),
         }
     }
 }

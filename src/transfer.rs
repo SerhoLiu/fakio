@@ -10,7 +10,6 @@ use super::buffer::{BufRange, SharedBuf};
 use super::crypto::{Cipher, Crypto};
 use super::v3;
 
-
 pub fn encrypt(
     reader: Rc<TcpStream>,
     writer: Rc<TcpStream>,
@@ -28,7 +27,6 @@ pub fn decrypt(
 ) -> Flatten<future::FutureResult<DecTransfer, io::Error>> {
     future::result(DecTransfer::new(reader, writer, cipher, key)).flatten()
 }
-
 
 #[derive(Copy, Clone, Debug)]
 enum EncState {
@@ -199,7 +197,6 @@ impl DecTransfer {
     }
 }
 
-
 impl Future for DecTransfer {
     type Item = (u64, u64);
     type Error = io::Error;
@@ -267,7 +264,6 @@ impl Future for DecTransfer {
     }
 }
 
-
 #[derive(Copy, Clone, Debug)]
 pub struct Stat {
     enc_read: u64,
@@ -292,10 +288,7 @@ impl fmt::Display for Stat {
         write!(
             f,
             "recv: {}/{} send: {}/{}",
-            self.dec_write,
-            self.dec_read,
-            self.enc_read,
-            self.enc_write
+            self.dec_write, self.dec_read, self.enc_read, self.enc_write
         )
     }
 }

@@ -7,7 +7,7 @@ server:
 release:
 	cargo build --release
 
-lint:
+clippy:
 	cargo +nightly clippy
 
 format:

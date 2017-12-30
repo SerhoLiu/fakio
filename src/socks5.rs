@@ -12,7 +12,6 @@ use tokio_core::reactor::Handle;
 
 use super::buffer::{BufRange, SharedBuf};
 
-
 const VERSION: u8 = 0x05;
 const AUTH_METHOD_NONE: u8 = 0x00;
 const CMD_TCP_CONNECT: u8 = 0x01;
@@ -93,7 +92,6 @@ impl ReqAddr {
     }
 }
 
-
 // BND.ADDR use IP V4 or V6, 16 is ipv6 bytes
 pub const REPLY_LEN: usize = 1 + 1 + 1 + 1 + 16 + 2;
 
@@ -147,7 +145,6 @@ impl Reply {
         self.len
     }
 }
-
 
 pub struct Handshake {
     handle: Handle,
@@ -338,9 +335,10 @@ impl Future for Handshake {
                     match remote {
                         Ok(conn) => return Ok(Async::Ready((conn, reqaddr.unwrap()))),
                         Err(e) => {
-                            return Err(other(
-                                &format!("connect remote {}, {}", self.remote_addr, e),
-                            ))
+                            return Err(other(&format!(
+                                "connect remote {}, {}",
+                                self.remote_addr, e
+                            )))
                         }
                     }
                 }

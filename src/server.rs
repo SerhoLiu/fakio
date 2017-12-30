@@ -20,7 +20,6 @@ use super::transfer;
 use super::util::{self, RandomBytes};
 use super::v3;
 
-
 pub struct Server {
     config: ServerConfig,
     users: Rc<HashMap<Digest, User>>,
@@ -87,19 +86,14 @@ impl Server {
 
                 let user = context.user;
                 let reqaddr = context.addr;
-                trans.map(move |(enc, dec)| {
-                    (user, reqaddr, transfer::Stat::new(enc, dec))
-                })
+                trans.map(move |(enc, dec)| (user, reqaddr, transfer::Stat::new(enc, dec)))
             });
 
             handle.spawn(transfer.then(move |res| {
                 match res {
                     Ok((user, req, stat)) => info!(
                         "{} - ({}) request {} success, {}",
-                        addr,
-                        user.name,
-                        req,
-                        stat,
+                        addr, user.name, req, stat,
                     ),
                     Err(e) => error!("{} - failed by {}", addr, e),
                 }
@@ -131,7 +125,6 @@ enum HandshakeState {
     RespToClient(BufRange),
     Done,
 }
-
 
 struct Request {
     success: bool,
@@ -207,9 +200,9 @@ impl Handshake {
                 start: range.end - v3::DEFAULT_DIGEST_LEN,
                 end: range.end,
             });
-            self.users.get(user).ok_or_else(|| {
-                other(&format!("user ({}) not exists", util::to_hex(user)))
-            })?
+            self.users
+                .get(user)
+                .ok_or_else(|| other(&format!("user ({}) not exists", util::to_hex(user))))?
         };
 
         let mut crypto = Crypto::new(
@@ -227,9 +220,10 @@ impl Handshake {
 
         let len = ((header[0] as usize) << 8) + (header[1] as usize);
         if len <= v3::DEFAULT_DIGEST_LEN + crypto.tag_len() {
-            return Err(other(
-                &format!("({}) request data length too small", user.name),
-            ));
+            return Err(other(&format!(
+                "({}) request data length too small",
+                user.name
+            )));
         }
 
         self.req.user = Some(user.clone());
@@ -258,9 +252,10 @@ impl Handshake {
 
         let padding_len = (data[0] as usize) + 1;
         if data_len < padding_len + 1 + 1 + 1 + 1 {
-            return Err(other(
-                &format!("({}) request data length not match", user.name),
-            ));
+            return Err(other(&format!(
+                "({}) request data length not match",
+                user.name
+            )));
         }
 
         let buf = &data[padding_len..];
@@ -283,23 +278,23 @@ impl Handshake {
             socks5::ADDR_TYPE_IPV6 => 16 + 2 + 1,
             socks5::ADDR_TYPE_DOMAIN_NAME => 1 + (buf[3] as usize) + 2 + 1,
             n => {
-                return Err(other(
-                    &format!("({}) request atyp {} unknown", user.name, n),
-                ))
+                return Err(other(&format!(
+                    "({}) request atyp {} unknown",
+                    user.name, n
+                )))
             }
         };
 
         if data_len != addr_start + addr_len {
-            return Err(other(
-                &format!("({}) request data length not match", user.name),
-            ));
+            return Err(other(&format!(
+                "({}) request data length not match",
+                user.name
+            )));
         }
 
         let addr = socks5::ReqAddr::new(&data[addr_start..data_len])
             .get()
-            .map_err(|err| {
-                other(&format!("({}) request req addr error, {}", user.name, err))
-            })?;
+            .map_err(|err| other(&format!("({}) request req addr error, {}", user.name, err)))?;
 
         self.req.addr = format!("{}:{}", addr.0, addr.1);
 
@@ -308,10 +303,7 @@ impl Handshake {
                 self.req.cipher = Some(cipher);
                 info!(
                     "{} - ({}) request {}, cihper {}",
-                    self.peer_addr,
-                    user.name,
-                    self.req.addr,
-                    cipher,
+                    self.peer_addr, user.name, self.req.addr, cipher,
                 );
                 Ok(Some(TcpConnect::new(
                     addr,
@@ -322,10 +314,7 @@ impl Handshake {
             Err(_) => {
                 info!(
                     "{} - ({}) request {}, cipher '{}' not support",
-                    self.peer_addr,
-                    user.name,
-                    self.req.addr,
-                    cipher_no,
+                    self.peer_addr, user.name, self.req.addr, cipher_no,
                 );
                 Ok(None)
             }
@@ -365,9 +354,7 @@ impl Handshake {
                 Err(e) => {
                     error!(
                         "{} - ({}) request generate key, {}",
-                        self.peer_addr,
-                        user.name,
-                        e,
+                        self.peer_addr, user.name, e,
                     );
                     resp = v3::SERVER_RESP_ERROR;
                     None
@@ -473,10 +460,7 @@ impl Future for Handshake {
                                 let user = self.req.user.as_ref().unwrap();
                                 error!(
                                     "{} - ({}) connect remote {}, {}",
-                                    self.peer_addr,
-                                    user.name,
-                                    self.req.addr,
-                                    e,
+                                    self.peer_addr, user.name, self.req.addr, e,
                                 )
                             }
                         },

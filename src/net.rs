@@ -7,7 +7,6 @@ use futures_cpupool::{CpuFuture, CpuPool};
 use tokio_core::net::{TcpStream, TcpStreamNew};
 use tokio_core::reactor::Handle;
 
-
 #[derive(Copy, Clone, Debug)]
 enum State {
     AddrResolving,

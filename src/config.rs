@@ -14,7 +14,6 @@ use toml;
 use super::crypto::Cipher;
 use super::v3;
 
-
 pub type Result<T> = result::Result<T, Box<error::Error>>;
 
 #[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
@@ -132,7 +131,6 @@ impl ServerConfig {
         })
     }
 }
-
 
 #[derive(Debug, Clone, Deserialize)]
 struct TomlClientConfig {
