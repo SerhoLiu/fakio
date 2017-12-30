@@ -1,5 +1,8 @@
 # Source: https://github.com/starkat99/appveyor-rust/
 
+# Rust needs at least Visual Studio 2013 Appveyor OS for MSVC targets.
+image: Visual Studio 2015
+
 environment:
   global:
     PROJECT_NAME: fakio
@@ -19,6 +22,10 @@ install:
   - rustc -Vv
   - cargo -V
 
+before_build:
+  # SET gcc PATH
+  - set PATH=C:\MinGW\bin;%PATH%
+
 # 'cargo test' takes care of building for us, so disable Appveyor's build stage. This prevents
 # the "directory does not contain a project or solution file" error.
 # source: https://github.com/starkat99/appveyor-rust/blob/master/appveyor.yml#L113
@@ -27,7 +34,6 @@ build: false
 # Equivalent to Travis' `script` phase
 test_script:
   - cargo build --verbose
-  - cargo run
   - cargo test
 
 before_deploy:
