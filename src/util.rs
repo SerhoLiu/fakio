@@ -160,7 +160,7 @@ mod test {
             env::set_var("HOME", r"C:\Users\Morty");
             assert_eq!(
                 r"C:\Users\Morty\rick.txt",
-                super::expand_tilde_path(r"~\rick")
+                super::expand_tilde_path(r"~\rick.txt")
             );
         }
 
