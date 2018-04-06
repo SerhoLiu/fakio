@@ -52,4 +52,4 @@ mod v3 {
 pub use client::Client;
 pub use config::{ClientConfig, ServerConfig};
 pub use server::Server;
-pub use util::init_logger;
+pub use util::{init_logger, expand_tilde_path};

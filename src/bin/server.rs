@@ -13,7 +13,9 @@ fn main() {
     let config_path = env::args()
         .nth(1)
         .unwrap_or_else(|| "conf/server.toml".to_string());
-    let config = match ServerConfig::new(&config_path) {
+
+    let config_path = fakio::expand_tilde_path(&config_path);
+    let config = match ServerConfig::new(&*config_path) {
         Ok(cfg) => cfg,
         Err(err) => {
             error!("load config {} failed, {}", config_path, err);
