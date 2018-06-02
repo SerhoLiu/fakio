@@ -1,37 +1,38 @@
 use std::borrow::Cow;
 use std::env;
 use std::fmt;
-use std::io;
+use std::io::{self, Write};
 use std::path::MAIN_SEPARATOR;
 
 use ansi_term::Color;
-use env_logger::LogBuilder;
-use log::{LogLevel, LogLevelFilter, LogRecord};
+use env_logger::{Builder, Formatter};
+use log::{Level, LevelFilter, Record};
 use ring::rand::{SecureRandom, SystemRandom};
 use time;
 
 use super::v3::MAX_PADDING_LEN;
 
-struct ColorLevel(LogLevel);
+struct ColorLevel(Level);
 
 impl fmt::Display for ColorLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
-            LogLevel::Trace => Color::Purple.paint("TRACE"),
-            LogLevel::Debug => Color::Blue.paint("DEBUG"),
-            LogLevel::Info => Color::Green.paint("INFO "),
-            LogLevel::Warn => Color::Yellow.paint("WARN "),
-            LogLevel::Error => Color::Red.paint("ERROR"),
+            Level::Trace => Color::Purple.paint("TRACE"),
+            Level::Debug => Color::Blue.paint("DEBUG"),
+            Level::Info => Color::Green.paint("INFO "),
+            Level::Warn => Color::Yellow.paint("WARN "),
+            Level::Error => Color::Red.paint("ERROR"),
         }.fmt(f)
     }
 }
 
 pub fn init_logger() {
-    let format = |record: &LogRecord| {
+    let format = |buf: &mut Formatter, record: &Record| {
         let now = time::now();
         let ms = now.tm_nsec / 1000 / 1000;
         let t = time::strftime("%Y-%m-%d %T", &now).unwrap();
-        format!(
+        writeln!(
+            buf,
             "{}.{:03} [{}]  {}",
             t,
             ms,
@@ -40,8 +41,8 @@ pub fn init_logger() {
         )
     };
 
-    let mut builder = LogBuilder::new();
-    builder.format(format).filter(None, LogLevelFilter::Info);
+    let mut builder = Builder::new();
+    builder.format(format).filter(None, LevelFilter::Info);
 
     if env::var("RUST_LOG").is_ok() {
         builder.parse(&env::var("RUST_LOG").unwrap());
@@ -51,7 +52,7 @@ pub fn init_logger() {
         builder.parse(&env::var("FAKIO_LOG").unwrap());
     }
 
-    builder.init().unwrap();
+    builder.init();
 }
 
 /// `MAX_PADDING_LEN 255`
@@ -80,7 +81,7 @@ impl RandomBytes {
         rand.fill(&mut padding[1..len + 1])
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e)))?;
         Ok(RandomBytes {
-            len: len,
+            len,
             bytes: padding,
         })
     }
@@ -127,7 +128,6 @@ pub fn expand_tilde_path(path: &str) -> Cow<str> {
         path.into()
     }
 }
-
 
 #[cfg(test)]
 mod test {

@@ -3,12 +3,11 @@
 use std::io;
 use std::mem;
 use std::net::{self, SocketAddr};
-use std::rc::Rc;
 use std::str;
+use std::sync::Arc;
 
 use futures::{Async, Future, Poll};
-use tokio_core::net::{TcpStream, TcpStreamNew};
-use tokio_core::reactor::Handle;
+use tokio::net::{ConnectFuture, TcpStream};
 
 use super::buffer::{BufRange, SharedBuf};
 
@@ -44,10 +43,7 @@ impl ReqAddr {
 
         let mut buf = [0u8; MAX_REQ_LEN];
         buf[..len].copy_from_slice(bytes);
-        ReqAddr {
-            len: len,
-            bytes: buf,
-        }
+        ReqAddr { len, bytes: buf }
     }
 
     #[inline]
@@ -147,33 +143,30 @@ impl Reply {
 }
 
 pub struct Handshake {
-    handle: Handle,
     peer_addr: SocketAddr,
-    client: Rc<TcpStream>,
-    reply: Rc<Reply>,
+    client: Arc<TcpStream>,
+    reply: Arc<Reply>,
     remote_addr: SocketAddr,
 
     buf: SharedBuf,
     state: HandshakeState,
 
-    connect: Option<TcpStreamNew>,
+    connect: Option<ConnectFuture>,
     remote: io::Result<TcpStream>,
     reqaddr: Option<ReqAddr>,
 }
 
 impl Handshake {
     pub fn new(
-        handle: Handle,
-        reply: Rc<Reply>,
+        reply: Arc<Reply>,
         peer: SocketAddr,
-        client: Rc<TcpStream>,
+        client: Arc<TcpStream>,
         remote: SocketAddr,
     ) -> Handshake {
         Handshake {
-            handle: handle,
             peer_addr: peer,
-            client: client,
-            reply: reply,
+            client,
+            reply,
             remote_addr: remote,
 
             buf: SharedBuf::new(MAX_REQ_LEN),
@@ -296,7 +289,7 @@ impl Future for Handshake {
                     info!("{} - request {}:{}", self.peer_addr, addr.0, addr.1);
 
                     self.reqaddr = Some(reqaddr);
-                    self.connect = Some(TcpStream::connect(&self.remote_addr, &self.handle));
+                    self.connect = Some(TcpStream::connect(&self.remote_addr));
                     self.state = HandshakeState::ConnectServer;
                 }
                 HandshakeState::ConnectServer => {

@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::io;
 use std::mem;
 use std::net::SocketAddr;
-use std::rc::Rc;
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::{future, Async, Future, Poll, Stream};
-use futures_cpupool::CpuPool;
-use rand::{self, Rng};
-use tokio_core::net::{TcpListener, TcpStream};
-use tokio_core::reactor::{Core, Handle, Timeout};
+use rand;
+use tokio;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::timer;
 
 use super::buffer::{BufRange, SharedBuf};
 use super::config::{Digest, ServerConfig, User};
@@ -22,87 +22,71 @@ use super::v3;
 
 pub struct Server {
     config: ServerConfig,
-    users: Rc<HashMap<Digest, User>>,
-    cpu_pool: CpuPool,
 }
 
 impl Server {
     pub fn new(config: ServerConfig) -> Server {
-        Server {
-            users: Rc::new(config.users.clone()),
-            config: config,
-            cpu_pool: CpuPool::new_num_cpus(),
-        }
+        Server { config }
     }
 
-    pub fn serve(&self) -> io::Result<()> {
-        let mut core = Core::new()?;
-        let handle = core.handle();
+    pub fn serve(self) -> io::Result<()> {
+        let users = Arc::new(self.config.users);
 
         let listen = self.config.listen;
-        let mut rng = rand::thread_rng();
-
-        let listener = TcpListener::bind(&listen, &handle)
-            .map_err(|e| other(&format!("bind on {}, {}", listen, e)))?;
+        let listener =
+            TcpListener::bind(&listen).map_err(|e| other(&format!("bind on {}, {}", listen, e)))?;
 
         info!("Listening on {}", listen);
 
-        let server = listener.incoming().for_each(|(client, addr)| {
-            let client = Rc::new(client);
+        let server = listener
+            .incoming()
+            .map_err(|e| error!("error accepting socket; error = {:?}", e))
+            .for_each(move |client| {
+                let peer_addr = client.peer_addr().unwrap();
+                let client = Arc::new(client);
 
-            let handshake = Handshake::new(
-                addr,
-                self.users.clone(),
-                client.clone(),
-                handle.clone(),
-                self.cpu_pool.clone(),
-            );
+                let handshake =
+                    Handshake::new(client.peer_addr().unwrap(), users.clone(), client.clone());
 
-            // timeout random [10, 40)
-            let secs = (rng.gen::<u8>() % 30 + 10) as u64;
-            let timeout = Timeout::new(Duration::new(secs, 0), &handle).unwrap();
-            let handshake = handshake
-                .map(Ok)
-                .select(timeout.map(Err))
-                .then(|res| match res {
-                    Ok((Ok(hand), _timeout)) => Ok(hand),
-                    Ok((Err(()), _handshake)) => Err(other("handshake timeout")),
-                    Err((e, _other)) => Err(e),
+                // timeout random [10, 40)
+                let secs = (rand::random::<u8>() % 30 + 10) as u64;
+                let timeout = Instant::now() + Duration::from_secs(secs);
+
+                let handshake =
+                    timer::Deadline::new(handshake, timeout).map_err(|e| other(&format!("{}", e)));
+                let transfer = handshake.and_then(move |context| {
+                    let (ckey, skey) = context.keypair.split();
+                    let trans = transfer::encrypt(
+                        context.remote.clone(),
+                        context.client.clone(),
+                        context.cipher,
+                        skey,
+                    ).join(transfer::decrypt(
+                        context.client.clone(),
+                        context.remote.clone(),
+                        context.cipher,
+                        ckey,
+                    ));
+
+                    let user = context.user;
+                    let reqaddr = context.addr;
+                    trans.map(move |(enc, dec)| (user, reqaddr, transfer::Stat::new(enc, dec)))
                 });
 
-            let transfer = handshake.and_then(move |context| {
-                let (ckey, skey) = context.keypair.split();
-                let trans = transfer::encrypt(
-                    context.remote.clone(),
-                    context.client.clone(),
-                    context.cipher,
-                    skey,
-                ).join(transfer::decrypt(
-                    context.client.clone(),
-                    context.remote.clone(),
-                    context.cipher,
-                    ckey,
-                ));
-
-                let user = context.user;
-                let reqaddr = context.addr;
-                trans.map(move |(enc, dec)| (user, reqaddr, transfer::Stat::new(enc, dec)))
+                tokio::spawn(transfer.then(move |res| {
+                    match res {
+                        Ok((user, req, stat)) => info!(
+                            "{} - ({}) request {} success, {}",
+                            peer_addr, user.name, req, stat,
+                        ),
+                        Err(e) => error!("{} - failed by {}", peer_addr, e),
+                    }
+                    future::ok(())
+                }))
             });
 
-            handle.spawn(transfer.then(move |res| {
-                match res {
-                    Ok((user, req, stat)) => info!(
-                        "{} - ({}) request {} success, {}",
-                        addr, user.name, req, stat,
-                    ),
-                    Err(e) => error!("{} - failed by {}", addr, e),
-                }
-                future::ok(())
-            }));
-            Ok(())
-        });
+        tokio::run(server);
 
-        core.run(server).unwrap();
         Ok(())
     }
 }
@@ -112,8 +96,8 @@ struct Context {
     addr: String,
     cipher: Cipher,
     keypair: KeyPair,
-    client: Rc<TcpStream>,
-    remote: Rc<TcpStream>,
+    client: Arc<TcpStream>,
+    remote: Arc<TcpStream>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -155,10 +139,8 @@ impl Request {
 
 struct Handshake {
     peer_addr: SocketAddr,
-    users: Rc<HashMap<Digest, User>>,
-    client: Rc<TcpStream>,
-    handle: Handle,
-    cpu_pool: CpuPool,
+    users: Arc<HashMap<Digest, User>>,
+    client: Arc<TcpStream>,
 
     buf: SharedBuf,
     state: HandshakeState,
@@ -169,17 +151,13 @@ struct Handshake {
 impl Handshake {
     fn new(
         peer: SocketAddr,
-        users: Rc<HashMap<Digest, User>>,
-        client: Rc<TcpStream>,
-        handle: Handle,
-        cpu_pool: CpuPool,
+        users: Arc<HashMap<Digest, User>>,
+        client: Arc<TcpStream>,
     ) -> Handshake {
         Handshake {
             peer_addr: peer,
-            users: users,
-            client: client,
-            handle: handle,
-            cpu_pool: cpu_pool,
+            users,
+            client,
             buf: SharedBuf::new(v3::MAX_BUFFER_SIZE),
             state: HandshakeState::ReqHeader(BufRange {
                 start: 0,
@@ -305,11 +283,7 @@ impl Handshake {
                     "{} - ({}) request {}, cihper {}",
                     self.peer_addr, user.name, self.req.addr, cipher,
                 );
-                Ok(Some(TcpConnect::new(
-                    addr,
-                    self.cpu_pool.clone(),
-                    self.handle.clone(),
-                )))
+                Ok(Some(TcpConnect::new(addr)))
             }
             Err(_) => {
                 info!(
@@ -486,12 +460,12 @@ impl Future for Handshake {
                     };
 
                     return Ok(Async::Ready(Context {
-                        user: user,
-                        addr: addr,
+                        user,
+                        addr,
                         cipher: req.cipher.unwrap(),
                         keypair: req.keypair.unwrap(),
                         client: self.client.clone(),
-                        remote: Rc::new(remote),
+                        remote: Arc::new(remote),
                     }));
                 }
                 HandshakeState::Done => panic!("poll a done future"),

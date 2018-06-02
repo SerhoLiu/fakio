@@ -1,30 +1,30 @@
 use std::fmt;
 use std::io;
 use std::net::Shutdown;
-use std::rc::Rc;
+use std::sync::Arc;
 
-use futures::{future, Async, Flatten, Future, Poll};
-use tokio_core::net::TcpStream;
+use futures::{future, Async, Future, Poll};
+use tokio::net::TcpStream;
 
 use super::buffer::{BufRange, SharedBuf};
 use super::crypto::{Cipher, Crypto};
 use super::v3;
 
 pub fn encrypt(
-    reader: Rc<TcpStream>,
-    writer: Rc<TcpStream>,
+    reader: Arc<TcpStream>,
+    writer: Arc<TcpStream>,
     cipher: Cipher,
     key: &[u8],
-) -> Flatten<future::FutureResult<EncTransfer, io::Error>> {
+) -> impl Future<Item = (u64, u64), Error = io::Error> {
     future::result(EncTransfer::new(reader, writer, cipher, key)).flatten()
 }
 
 pub fn decrypt(
-    reader: Rc<TcpStream>,
-    writer: Rc<TcpStream>,
+    reader: Arc<TcpStream>,
+    writer: Arc<TcpStream>,
     cipher: Cipher,
     key: &[u8],
-) -> Flatten<future::FutureResult<DecTransfer, io::Error>> {
+) -> impl Future<Item = (u64, u64), Error = io::Error> {
     future::result(DecTransfer::new(reader, writer, cipher, key)).flatten()
 }
 
@@ -37,8 +37,8 @@ enum EncState {
 }
 
 pub struct EncTransfer {
-    reader: Rc<TcpStream>,
-    writer: Rc<TcpStream>,
+    reader: Arc<TcpStream>,
+    writer: Arc<TcpStream>,
     read_eof: bool,
     nread: u64,
     nwrite: u64,
@@ -52,8 +52,8 @@ pub struct EncTransfer {
 
 impl EncTransfer {
     fn new(
-        reader: Rc<TcpStream>,
-        writer: Rc<TcpStream>,
+        reader: Arc<TcpStream>,
+        writer: Arc<TcpStream>,
         cipher: Cipher,
         key: &[u8],
     ) -> io::Result<EncTransfer> {
@@ -63,14 +63,14 @@ impl EncTransfer {
             end: v3::MAX_BUFFER_SIZE - crypto.tag_len(),
         };
         Ok(EncTransfer {
-            reader: reader,
-            writer: writer,
+            reader,
+            writer,
             read_eof: false,
             nread: 0,
             nwrite: 0,
             state: EncState::Reading,
-            crypto: crypto,
-            read_range: read_range,
+            crypto,
+            read_range,
             buf: SharedBuf::new(v3::MAX_BUFFER_SIZE),
         })
     }
@@ -138,7 +138,7 @@ impl Future for EncTransfer {
                     }
                 }
                 EncState::Shutdown => {
-                    try_nb!((&*self.writer).shutdown(Shutdown::Write));
+                    (&*self.writer).shutdown(Shutdown::Write)?;
                     self.state = EncState::Done;
                     return Ok(Async::Ready((self.nread, self.nwrite)));
                 }
@@ -159,8 +159,8 @@ enum DecState {
 }
 
 pub struct DecTransfer {
-    reader: Rc<TcpStream>,
-    writer: Rc<TcpStream>,
+    reader: Arc<TcpStream>,
+    writer: Arc<TcpStream>,
     nread: u64,
     nwrite: u64,
 
@@ -173,8 +173,8 @@ pub struct DecTransfer {
 
 impl DecTransfer {
     fn new(
-        reader: Rc<TcpStream>,
-        writer: Rc<TcpStream>,
+        reader: Arc<TcpStream>,
+        writer: Arc<TcpStream>,
         cipher: Cipher,
         key: &[u8],
     ) -> io::Result<DecTransfer> {
@@ -185,13 +185,13 @@ impl DecTransfer {
         };
 
         Ok(DecTransfer {
-            reader: reader,
-            writer: writer,
+            reader,
+            writer,
             nread: 0,
             nwrite: 0,
             state: DecState::TryReadHead,
-            crypto: crypto,
-            head_range: head_range,
+            crypto,
+            head_range,
             buf: SharedBuf::new(v3::MAX_BUFFER_SIZE),
         })
     }
@@ -254,7 +254,7 @@ impl Future for DecTransfer {
                     self.state = DecState::TryReadHead;
                 }
                 DecState::Shutdown => {
-                    try_nb!((&*self.writer).shutdown(Shutdown::Write));
+                    (&*self.writer).shutdown(Shutdown::Write)?;
                     self.state = DecState::Done;
                     return Ok(Async::Ready((self.nread, self.nwrite)));
                 }

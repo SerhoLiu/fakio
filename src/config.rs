@@ -2,8 +2,7 @@ use std::borrow;
 use std::collections::HashMap;
 use std::convert;
 use std::error;
-use std::fs::File;
-use std::io::Read;
+use std::fs;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::result;
 
@@ -28,8 +27,6 @@ pub struct ClientConfig {
     pub cipher: Cipher,
     pub server: SocketAddr,
     pub listen: SocketAddr,
-
-    raw: TomlClientConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -50,10 +47,8 @@ impl Digest {
             value: [0u8; v3::DEFAULT_DIGEST_LEN],
         };
 
-        #[cfg_attr(rustfmt, rustfmt_skip)]
-        d.value.copy_from_slice(
-            digest::digest(v3::DEFAULT_DIGEST, value.as_bytes()).as_ref()
-        );
+        d.value
+            .copy_from_slice(digest::digest(v3::DEFAULT_DIGEST, value.as_bytes()).as_ref());
         d
     }
 
@@ -96,10 +91,9 @@ impl ClientConfig {
         Ok(ClientConfig {
             username: Digest::new(&raw.username),
             password: Digest::new(&raw.password),
-            cipher: cipher,
-            server: server,
-            listen: listen,
-            raw: raw.clone(),
+            cipher,
+            server,
+            listen,
         })
     }
 }
@@ -125,10 +119,7 @@ impl ServerConfig {
             );
         }
 
-        Ok(ServerConfig {
-            listen: listen,
-            users: users,
-        })
+        Ok(ServerConfig { listen, users })
     }
 }
 
@@ -156,11 +147,7 @@ fn read_toml_config<T>(path: &str) -> Result<T>
 where
     T: de::DeserializeOwned,
 {
-    let mut file = File::open(path)?;
-
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-
-    let config = toml::from_str(&contents)?;
+    let content = fs::read_to_string(path)?;
+    let config = toml::from_str(&content)?;
     Ok(config)
 }

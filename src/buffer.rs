@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
-use std::io::{self, Read, Write};
+use std::io;
 
 use futures::{Async, Poll};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 #[derive(Copy, Clone, Debug)]
 pub struct BufRange {
@@ -27,7 +28,7 @@ pub struct SharedBuf {
 impl SharedBuf {
     pub fn new(size: usize) -> SharedBuf {
         SharedBuf {
-            size: size,
+            size,
             inner: vec![0u8; size],
             curr: 0,
             state: BufState::None,
@@ -94,7 +95,7 @@ impl SharedBuf {
         (&mut self.inner[start..end]).copy_from_slice(slice);
     }
 
-    pub fn read_most<R: Read>(
+    pub fn read_most<R: AsyncRead>(
         &mut self,
         reader: &mut R,
         range: BufRange,
@@ -110,17 +111,15 @@ impl SharedBuf {
         let mut curr = 0;
         let need = end - start;
         while curr < need {
-            match reader.read(&mut self.inner[start + curr..end]) {
-                Ok(n) => {
+            match reader.poll_read(&mut self.inner[start + curr..end]) {
+                Ok(Async::Ready(n)) => {
                     curr += n;
                     if n == 0 {
                         eof = true;
                         break;
                     }
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    break;
-                }
+                Ok(Async::NotReady) => break,
                 Err(e) => return Err(e),
             }
         }
@@ -133,14 +132,14 @@ impl SharedBuf {
             Ok(Async::Ready((
                 eof,
                 BufRange {
-                    start: start,
+                    start,
                     end: start + curr,
                 },
             )))
         }
     }
 
-    pub fn read_exact<R: Read>(
+    pub fn read_exact<R: AsyncRead>(
         &mut self,
         reader: &mut R,
         range: BufRange,
@@ -154,7 +153,7 @@ impl SharedBuf {
 
         let need = end - start;
         while self.curr < need {
-            let n = try_nb!(reader.read(&mut self.inner[start + self.curr..end]));
+            let n = try_ready!(reader.poll_read(&mut self.inner[start + self.curr..end]));
             self.curr += n;
             if n == 0 {
                 return Err(eof());
@@ -166,7 +165,7 @@ impl SharedBuf {
         Ok(Async::Ready(range))
     }
 
-    pub fn write_exact<W: Write>(
+    pub fn write_exact<W: AsyncWrite>(
         &mut self,
         writer: &mut W,
         range: BufRange,
@@ -180,7 +179,7 @@ impl SharedBuf {
 
         let need = end - start;
         while self.curr < need {
-            let n = try_nb!(writer.write(&self.inner[start + self.curr..end]));
+            let n = try_ready!(writer.poll_write(&self.inner[start + self.curr..end]));
             self.curr += n;
             if n == 0 {
                 return Err(zero_write());

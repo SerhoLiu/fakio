@@ -2,7 +2,6 @@ extern crate ansi_term;
 extern crate env_logger;
 #[macro_use]
 extern crate futures;
-extern crate futures_cpupool;
 #[macro_use]
 extern crate log;
 extern crate rand;
@@ -11,19 +10,18 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate time;
-extern crate tokio_core;
-#[macro_use]
-extern crate tokio_io;
+extern crate tokio;
+extern crate tokio_threadpool;
 extern crate toml;
 
-mod net;
 mod buffer;
+mod client;
+mod config;
 mod crypto;
+mod net;
+mod server;
 mod socks5;
 mod transfer;
-mod config;
-mod client;
-mod server;
 mod util;
 
 mod v3 {
@@ -52,4 +50,4 @@ mod v3 {
 pub use client::Client;
 pub use config::{ClientConfig, ServerConfig};
 pub use server::Server;
-pub use util::{init_logger, expand_tilde_path};
+pub use util::{expand_tilde_path, init_logger};

@@ -158,16 +158,16 @@ impl Crypto {
         let nonce_len = aead.nonce_len();
 
         Ok(Crypto {
-            cipher: cipher,
-            aead: aead,
+            cipher,
+            aead,
 
             tag_len: aead.tag_len(),
             key_len: aead.key_len(),
             nonce_len: aead.nonce_len(),
 
-            open_key: open_key,
+            open_key,
             open_nonce: vec![0u8; nonce_len],
-            seal_key: seal_key,
+            seal_key,
             seal_nonce: vec![0u8; nonce_len],
         })
     }
@@ -264,7 +264,7 @@ mod test {
             super::incr_nonce(&mut nonce);
             let x = (nonce[0] as usize) + ((nonce[1] as usize) << 8) + ((nonce[2] as usize) << 16)
                 + ((nonce[3] as usize) << 24);
-            assert!(x == i);
+            assert_eq!(x, i);
         }
     }
 }

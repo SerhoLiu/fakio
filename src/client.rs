@@ -1,10 +1,11 @@
 use std::io;
-use std::rc::Rc;
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::{future, Async, Future, Poll, Stream};
-use tokio_core::net::{TcpListener, TcpStream};
-use tokio_core::reactor::{Core, Timeout};
+use tokio;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::timer;
 
 use super::buffer::{BufRange, SharedBuf};
 use super::config::ClientConfig;
@@ -17,98 +18,93 @@ use super::v3;
 const HANDSHAKE_TIMEOUT: u64 = 10;
 
 pub struct Client {
-    config: Rc<ClientConfig>,
-    socks5_reply: Rc<socks5::Reply>,
+    config: ClientConfig,
+    socks5_reply: socks5::Reply,
 }
 
 impl Client {
     pub fn new(config: ClientConfig) -> Client {
         let reply = socks5::Reply::new(config.listen);
         Client {
-            config: Rc::new(config),
-            socks5_reply: Rc::new(reply),
+            config,
+            socks5_reply: reply,
         }
     }
 
-    pub fn serve(&self) -> io::Result<()> {
-        let mut core = Core::new()?;
-        let handle = core.handle();
+    pub fn serve(self) -> io::Result<()> {
+        let config = Arc::new(self.config);
+        let socks5_reply = Arc::new(self.socks5_reply);
 
-        let timeout = Duration::new(HANDSHAKE_TIMEOUT, 0);
-        let config = self.config.clone();
-        let socks5_reply = self.socks5_reply.clone();
-
-        let listener = TcpListener::bind(&config.listen, &handle)
+        let listener = TcpListener::bind(&config.listen)
             .map_err(|e| other(&format!("bind on {}, {}", config.listen, e)))?;
 
         info!("Listening for socks5 proxy on local {}", config.listen);
 
-        let clients = listener.incoming().for_each(|(conn, addr)| {
-            let client = Rc::new(conn);
+        let clients = listener
+            .incoming()
+            .map_err(|e| error!("error accepting socket; error = {:?}", e))
+            .for_each(move |conn| {
+                let peer_addr = conn.peer_addr().unwrap();
+                let client = Arc::new(conn);
 
-            let socks5 = socks5::Handshake::new(
-                handle.clone(),
-                socks5_reply.clone(),
-                addr,
-                client.clone(),
-                config.server,
-            );
+                let socks5 = socks5::Handshake::new(
+                    socks5_reply.clone(),
+                    peer_addr,
+                    client.clone(),
+                    config.server,
+                );
 
-            let handshake_config = config.clone();
-            let handshake = socks5.and_then(move |(conn, reqaddr)| {
-                conn.set_nodelay(true).unwrap();
+                let handshake_config = config.clone();
+                let handshake = socks5.and_then(move |(conn, reqaddr)| {
+                    conn.set_nodelay(true).unwrap();
 
-                let config = handshake_config.clone();
-                let req = reqaddr.get().unwrap();
-                let req = format!("{}:{}", req.0, req.1);
-                let server = Rc::new(conn);
+                    let config = handshake_config.clone();
+                    let req = reqaddr.get().unwrap();
+                    let req = format!("{}:{}", req.0, req.1);
+                    let server = Arc::new(conn);
 
-                match Handshake::new(config, server.clone(), reqaddr) {
-                    Ok(hand) => future::ok(hand.map(|keypair| (req, keypair, server))),
-                    Err(e) => future::err(e),
-                }.flatten()
-            });
-
-            let timeout = Timeout::new(timeout, &handle).unwrap();
-            let handshake = handshake
-                .map(Ok)
-                .select(timeout.map(Err))
-                .then(|res| match res {
-                    Ok((Ok(hand), _timeout)) => Ok(hand),
-                    Ok((Err(()), _handshake)) => Err(other("handshake timeout")),
-                    Err((e, _other)) => Err(e),
+                    match Handshake::new(config, server.clone(), reqaddr) {
+                        Ok(hand) => future::ok(hand.map(|keypair| (req, keypair, server))),
+                        Err(e) => future::err(e),
+                    }.flatten()
                 });
 
-            let transfer_config = config.clone();
+                let timeout = Instant::now() + Duration::from_secs(HANDSHAKE_TIMEOUT);
+                let handshake =
+                    timer::Deadline::new(handshake, timeout).map_err(|e| other(&format!("{}", e)));
 
-            let transfer = handshake.and_then(move |(reqaddr, keypair, server)| {
-                let (ckey, skey) = keypair.split();
+                let transfer_config = config.clone();
 
-                #[cfg_attr(rustfmt, rustfmt_skip)]
-                transfer::encrypt(
-                    client.clone(),
-                    server.clone(),
-                    transfer_config.cipher,
-                    ckey
-                ).join(transfer::decrypt(
-                    server.clone(),
-                    client.clone(),
-                    transfer_config.cipher,
-                    skey,
-                )).map(|(enc, dec)| (reqaddr, transfer::Stat::new(enc, dec)))
+                let transfer = handshake.and_then(move |(reqaddr, keypair, server)| {
+                    let (ckey, skey) = keypair.split();
+                    let trans = transfer::encrypt(
+                        client.clone(),
+                        server.clone(),
+                        transfer_config.cipher,
+                        ckey,
+                    ).join(transfer::decrypt(
+                        server.clone(),
+                        client.clone(),
+                        transfer_config.cipher,
+                        skey,
+                    ));
+
+                    trans.map(|(enc, dec)| (reqaddr, transfer::Stat::new(enc, dec)))
+                });
+
+                tokio::spawn(transfer.then(move |res| {
+                    match res {
+                        Ok((req, stat)) => {
+                            info!("{} - request {} success, {}", peer_addr, req, stat)
+                        }
+                        Err(e) => error!("{} - failed by {}", peer_addr, e),
+                    }
+                    future::ok(())
+                }))
             });
 
-            handle.spawn(transfer.then(move |res| {
-                match res {
-                    Ok((req, stat)) => info!("{} - request {} success, {}", addr, req, stat),
-                    Err(e) => error!("{} - failed by {}", addr, e),
-                }
-                future::ok(())
-            }));
-            Ok(())
-        });
+        tokio::run(clients);
 
-        core.run(clients).unwrap();
         Ok(())
     }
 }
@@ -123,8 +119,8 @@ enum HandshakeState {
 }
 
 struct Handshake {
-    config: Rc<ClientConfig>,
-    server: Rc<TcpStream>,
+    config: Arc<ClientConfig>,
+    server: Arc<TcpStream>,
     addr: socks5::ReqAddr,
 
     crypto: Crypto,
@@ -134,8 +130,8 @@ struct Handshake {
 
 impl Handshake {
     fn new(
-        config: Rc<ClientConfig>,
-        server: Rc<TcpStream>,
+        config: Arc<ClientConfig>,
+        server: Arc<TcpStream>,
         addr: socks5::ReqAddr,
     ) -> io::Result<Handshake> {
         let crypto = Crypto::new(
@@ -144,10 +140,10 @@ impl Handshake {
             config.password.as_ref(),
         )?;
         Ok(Handshake {
-            config: config,
-            server: server,
-            addr: addr,
-            crypto: crypto,
+            config,
+            server,
+            addr,
+            crypto,
             buf: SharedBuf::new(v3::MAX_BUFFER_SIZE),
             state: HandshakeState::Init,
         })

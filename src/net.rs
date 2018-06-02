@@ -3,9 +3,8 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::vec::IntoIter;
 
 use futures::{Async, Future, Poll};
-use futures_cpupool::{CpuFuture, CpuPool};
-use tokio_core::net::{TcpStream, TcpStreamNew};
-use tokio_core::reactor::Handle;
+use tokio::net::{ConnectFuture, TcpStream};
+use tokio_threadpool::blocking;
 
 #[derive(Copy, Clone, Debug)]
 enum State {
@@ -15,24 +14,17 @@ enum State {
 }
 
 pub struct TcpConnect {
-    handle: Handle,
-
     state: State,
-    resolver: CpuFuture<Vec<SocketAddr>, io::Error>,
-    current: Option<TcpStreamNew>,
+    addr: (String, u16),
+    current: Option<ConnectFuture>,
     addrs: Option<IntoIter<SocketAddr>>,
 }
 
 impl TcpConnect {
-    pub fn new(host: (String, u16), pool: CpuPool, handle: Handle) -> TcpConnect {
+    pub fn new(addr: (String, u16)) -> TcpConnect {
         TcpConnect {
-            handle: handle,
-
             state: State::AddrResolving,
-            resolver: pool.spawn_fn(move || match (&*host.0, host.1).to_socket_addrs() {
-                Ok(addrs) => Ok(addrs.collect()),
-                Err(e) => Err(e),
-            }),
+            addr,
             current: None,
             addrs: None,
         }
@@ -50,17 +42,17 @@ impl TcpConnect {
                     Err(e) => {
                         err = Some(e);
                         if let Some(addr) = addrs.next() {
-                            *current = TcpStream::connect(&addr, &self.handle);
+                            *current = TcpStream::connect(&addr);
                             continue;
                         }
                     }
                 }
             } else if let Some(addr) = addrs.next() {
-                self.current = Some(TcpStream::connect(&addr, &self.handle));
+                self.current = Some(TcpStream::connect(&addr));
                 continue;
             }
 
-            return Err(err.take().expect("missing connect error"));
+            return Err(err.unwrap_or(other_err("no socket addr for connect")));
         }
     }
 }
@@ -73,11 +65,14 @@ impl Future for TcpConnect {
         loop {
             match self.state {
                 State::AddrResolving => {
-                    let addrs = match self.resolver.poll()? {
-                        Async::NotReady => return Ok(Async::NotReady),
-                        Async::Ready(t) => t,
+                    let addrs = match blocking(|| (&*self.addr.0, self.addr.1).to_socket_addrs()) {
+                        Ok(Async::Ready(Ok(v))) => v,
+                        Ok(Async::Ready(Err(err))) => return Err(err),
+                        Ok(Async::NotReady) => return Ok(Async::NotReady),
+                        Err(e) => return Err(other_err(&format!("{:}", e))),
                     };
-                    self.addrs = Some(addrs.into_iter());
+
+                    self.addrs = Some(addrs);
                     self.state = State::TcpConnecting;
                 }
                 State::TcpConnecting => {
@@ -89,4 +84,9 @@ impl Future for TcpConnect {
             }
         }
     }
+}
+
+#[inline]
+fn other_err(desc: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, desc)
 }
