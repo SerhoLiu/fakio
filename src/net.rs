@@ -118,10 +118,8 @@ impl ProxyStream {
 }
 
 impl Read for ProxyStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let r = (&mut (&*self.0)).read(buf);
-
-        if cfg!(any(
+    #[cfg(
+        any(
             target_os = "bitrig",
             target_os = "dragonfly",
             target_os = "freebsd",
@@ -129,28 +127,42 @@ impl Read for ProxyStream {
             target_os = "macos",
             target_os = "netbsd",
             target_os = "openbsd"
-        )) {
-            match r {
-                Ok(n) => Ok(n),
-                Err(e) => {
-                    // FIXME: https://github.com/tokio-rs/tokio/issues/449
-                    // maybe tokio bug, maybe my bug...
-                    if e.kind() == io::ErrorKind::WouldBlock {
-                        if let Async::Ready(ready) =
-                            self.0.poll_read_ready(mio::Ready::readable())?
-                        {
-                            if mio::unix::UnixReady::from(ready).is_hup() {
-                                warn!("kqueue get EV_EOF, but read get WouldBlock, maybe a bug");
-                                return Ok(0);
-                            }
+        )
+    )]
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match (&mut (&*self.0)).read(buf) {
+            Ok(n) => return Ok(n),
+            Err(e) => {
+                // FIXME: https://github.com/tokio-rs/tokio/issues/449
+                // maybe tokio bug, maybe my bug...
+                if e.kind() == io::ErrorKind::WouldBlock {
+                    if let Async::Ready(ready) = self.0.poll_read_ready(mio::Ready::readable())? {
+                        if mio::unix::UnixReady::from(ready).is_hup() {
+                            warn!("kqueue get EV_EOF, but read get WouldBlock, maybe a bug");
+                            return Ok(0);
                         }
                     }
-                    Err(e)
                 }
+                return Err(e);
             }
-        } else {
-            r
         }
+    }
+
+    #[cfg(
+        not(
+            any(
+                target_os = "bitrig",
+                target_os = "dragonfly",
+                target_os = "freebsd",
+                target_os = "ios",
+                target_os = "macos",
+                target_os = "netbsd",
+                target_os = "openbsd"
+            )
+        )
+    )]
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        (&mut (&*self.0)).read(buf)
     }
 }
 
