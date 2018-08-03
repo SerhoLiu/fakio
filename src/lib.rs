@@ -1,5 +1,4 @@
 extern crate ansi_term;
-extern crate dirs;
 extern crate env_logger;
 #[macro_use]
 extern crate futures;
