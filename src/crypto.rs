@@ -44,8 +44,8 @@ impl Cipher {
         }
     }
 
-    pub fn to_no(&self) -> u8 {
-        match *self {
+    pub fn to_no(self) -> u8 {
+        match self {
             Cipher::AES128GCM => 1,
             Cipher::AES256GCM => 2,
             Cipher::CHACHA20POLY1305 => 3,
@@ -53,17 +53,17 @@ impl Cipher {
     }
 
     #[inline]
-    pub fn key_len(&self) -> usize {
+    pub fn key_len(self) -> usize {
         self.algorithm().key_len()
     }
 
     #[inline]
-    pub fn tag_len(&self) -> usize {
+    pub fn tag_len(self) -> usize {
         self.algorithm().tag_len()
     }
 
-    fn algorithm(&self) -> &'static aead::Algorithm {
-        match *self {
+    fn algorithm(self) -> &'static aead::Algorithm {
+        match self {
             Cipher::AES128GCM => &aead::AES_128_GCM,
             Cipher::AES256GCM => &aead::AES_256_GCM,
             Cipher::CHACHA20POLY1305 => &aead::CHACHA20_POLY1305,
@@ -77,7 +77,7 @@ impl Default for Cipher {
     }
 }
 
-const INFO_KEY: &'static str = "hello kelsi";
+const INFO_KEY: &str = "hello kelsi";
 
 #[derive(Debug)]
 pub struct KeyPair {
@@ -262,7 +262,9 @@ mod test {
         let mut nonce = [0u8; 4];
         for i in 1..1024 {
             super::incr_nonce(&mut nonce);
-            let x = (nonce[0] as usize) + ((nonce[1] as usize) << 8) + ((nonce[2] as usize) << 16)
+            let x = (nonce[0] as usize)
+                + ((nonce[1] as usize) << 8)
+                + ((nonce[2] as usize) << 16)
                 + ((nonce[3] as usize) << 24);
             assert_eq!(x, i);
         }

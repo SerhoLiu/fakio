@@ -1,10 +1,25 @@
-use std::io;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::io::{self, Read, Write};
+use std::net::{Shutdown, SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
 use std::vec::IntoIter;
 
 use futures::{Async, Future, Poll};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{ConnectFuture, TcpStream};
 use tokio_threadpool::blocking;
+
+#[cfg(
+    any(
+        target_os = "bitrig",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )
+)]
+use mio;
 
 #[derive(Copy, Clone, Debug)]
 enum State {
@@ -52,7 +67,7 @@ impl TcpConnect {
                 continue;
             }
 
-            return Err(err.unwrap_or(other_err("no socket addr for connect")));
+            return Err(err.unwrap_or_else(|| other_err("no socket addr for connect")));
         }
     }
 }
@@ -69,7 +84,7 @@ impl Future for TcpConnect {
                         Ok(Async::Ready(Ok(v))) => v,
                         Ok(Async::Ready(Err(err))) => return Err(err),
                         Ok(Async::NotReady) => return Ok(Async::NotReady),
-                        Err(e) => return Err(other_err(&format!("{:}", e))),
+                        Err(e) => return Err(other_err(&format!("tcp conncet, {}", e))),
                     };
 
                     self.addrs = Some(addrs);
@@ -89,4 +104,68 @@ impl Future for TcpConnect {
 #[inline]
 fn other_err(desc: &str) -> io::Error {
     io::Error::new(io::ErrorKind::Other, desc)
+}
+
+#[derive(Clone, Debug)]
+pub struct ProxyStream(Arc<TcpStream>);
+
+impl ProxyStream {
+    pub fn new(stream: TcpStream) -> ProxyStream {
+        ProxyStream(Arc::new(stream))
+    }
+}
+
+impl Read for ProxyStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let r = (&mut (&*self.0)).read(buf);
+
+        if cfg!(any(
+            target_os = "bitrig",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "ios",
+            target_os = "macos",
+            target_os = "netbsd",
+            target_os = "openbsd"
+        )) {
+            match r {
+                Ok(n) => Ok(n),
+                Err(e) => {
+                    // FIXME: https://github.com/tokio-rs/tokio/issues/449
+                    // maybe tokio bug, maybe my bug...
+                    if e.kind() == io::ErrorKind::WouldBlock {
+                        if let Async::Ready(ready) =
+                            self.0.poll_read_ready(mio::Ready::readable())?
+                        {
+                            if mio::unix::UnixReady::from(ready).is_hup() {
+                                warn!("kqueue get EV_EOF, but read get WouldBlock, maybe a bug");
+                                return Ok(0);
+                            }
+                        }
+                    }
+                    Err(e)
+                }
+            }
+        } else {
+            r
+        }
+    }
+}
+
+impl Write for ProxyStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (&mut (&*self.0)).write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl AsyncRead for ProxyStream {}
+
+impl AsyncWrite for ProxyStream {
+    fn shutdown(&mut self) -> Poll<(), io::Error> {
+        self.0.shutdown(Shutdown::Write)?;
+        Ok(().into())
+    }
 }

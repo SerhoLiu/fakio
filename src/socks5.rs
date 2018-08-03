@@ -10,6 +10,7 @@ use futures::{Async, Future, Poll};
 use tokio::net::{ConnectFuture, TcpStream};
 
 use super::buffer::{BufRange, SharedBuf};
+use super::net::ProxyStream;
 
 const VERSION: u8 = 0x05;
 const AUTH_METHOD_NONE: u8 = 0x00;
@@ -58,20 +59,20 @@ impl ReqAddr {
         match atyp {
             ADDR_TYPE_IPV4 => {
                 let addr = net::Ipv4Addr::new(buf[0], buf[1], buf[2], buf[3]);
-                let port = ((buf[4] as u16) << 8) | (buf[5] as u16);
+                let port = (u16::from(buf[4]) << 8) | u16::from(buf[5]);
                 Ok((format!("{}", addr), port))
             }
             ADDR_TYPE_IPV6 => {
-                let a = ((buf[0] as u16) << 8) | (buf[1] as u16);
-                let b = ((buf[2] as u16) << 8) | (buf[3] as u16);
-                let c = ((buf[4] as u16) << 8) | (buf[5] as u16);
-                let d = ((buf[6] as u16) << 8) | (buf[7] as u16);
-                let e = ((buf[8] as u16) << 8) | (buf[9] as u16);
-                let f = ((buf[10] as u16) << 8) | (buf[11] as u16);
-                let g = ((buf[12] as u16) << 8) | (buf[13] as u16);
-                let h = ((buf[14] as u16) << 8) | (buf[15] as u16);
+                let a = (u16::from(buf[0]) << 8) | u16::from(buf[1]);
+                let b = (u16::from(buf[2]) << 8) | u16::from(buf[3]);
+                let c = (u16::from(buf[4]) << 8) | u16::from(buf[5]);
+                let d = (u16::from(buf[6]) << 8) | u16::from(buf[7]);
+                let e = (u16::from(buf[8]) << 8) | u16::from(buf[9]);
+                let f = (u16::from(buf[10]) << 8) | u16::from(buf[11]);
+                let g = (u16::from(buf[12]) << 8) | u16::from(buf[13]);
+                let h = (u16::from(buf[14]) << 8) | u16::from(buf[15]);
                 let addr = net::Ipv6Addr::new(a, b, c, d, e, f, g, h);
-                let port = ((buf[16] as u16) << 8) | (buf[17] as u16);
+                let port = (u16::from(buf[16]) << 8) | u16::from(buf[17]);
 
                 Ok((format!("{}", addr), port))
             }
@@ -80,7 +81,7 @@ impl ReqAddr {
                 let domain = String::from_utf8(buf[1..len + 1].to_vec())
                     .map_err(|e| other(&format!("domain not valid utf-8, {}", e)))?;
                 let pos = buf.len() - 2;
-                let port = ((buf[pos] as u16) << 8) | (buf[pos + 1] as u16);
+                let port = (u16::from(buf[pos]) << 8) | u16::from(buf[pos + 1]);
                 Ok((domain, port))
             }
             _ => unreachable!(),
@@ -144,7 +145,7 @@ impl Reply {
 
 pub struct Handshake {
     peer_addr: SocketAddr,
-    client: Arc<TcpStream>,
+    client: ProxyStream,
     reply: Arc<Reply>,
     remote_addr: SocketAddr,
 
@@ -160,7 +161,7 @@ impl Handshake {
     pub fn new(
         reply: Arc<Reply>,
         peer: SocketAddr,
-        client: Arc<TcpStream>,
+        client: ProxyStream,
         remote: SocketAddr,
     ) -> Handshake {
         Handshake {
@@ -205,7 +206,7 @@ impl Future for Handshake {
         loop {
             match self.state {
                 HandshakeState::AuthVersion(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.client), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
                     let buf = self.buf.get_ref_range(range);
                     if buf[0] != VERSION {
                         return Err(other("only support socks version 5"));
@@ -216,7 +217,7 @@ impl Future for Handshake {
                     });
                 }
                 HandshakeState::AuthNmethod(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.client), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
                     let buf = self.buf.get_ref_range(range);
                     self.state = HandshakeState::AuthMethods(BufRange {
                         start: range.end,
@@ -224,7 +225,7 @@ impl Future for Handshake {
                     });
                 }
                 HandshakeState::AuthMethods(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.client), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
                     {
                         let buf = self.buf.get_ref_range(range);
                         if !buf.contains(&AUTH_METHOD_NONE) {
@@ -239,11 +240,11 @@ impl Future for Handshake {
                     self.state = HandshakeState::AuthEnd(range)
                 }
                 HandshakeState::AuthEnd(range) => {
-                    try_ready!(self.buf.write_exact(&mut (&*self.client), range));
+                    try_ready!(self.buf.write_exact(&mut self.client, range));
                     self.state = HandshakeState::ReqVersion(BufRange { start: 0, end: 1 })
                 }
                 HandshakeState::ReqVersion(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.client), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
                     let buf = self.buf.get_ref_range(range);
                     if buf[0] != VERSION {
                         return Err(other("only support socks version 5"));
@@ -255,7 +256,7 @@ impl Future for Handshake {
                     });
                 }
                 HandshakeState::ReqHeader(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.client), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
                     let buf = self.buf.get_ref_range(range);
                     if buf[0] != CMD_TCP_CONNECT {
                         return Err(other("only support tcp connect command"));
@@ -276,7 +277,7 @@ impl Future for Handshake {
                     });
                 }
                 HandshakeState::ReqData(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.client), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
                     // get addr info
                     let range = BufRange {
                         // VER - CMD -  RSV
@@ -321,7 +322,7 @@ impl Future for Handshake {
                     })
                 }
                 HandshakeState::ReqEnd(range) => {
-                    try_ready!(self.buf.write_exact(&mut (&*self.client), range));
+                    try_ready!(self.buf.write_exact(&mut self.client, range));
                     self.state = HandshakeState::Done;
                     let remote = mem::replace(&mut self.remote, Err(not_connected()));
                     let reqaddr = mem::replace(&mut self.reqaddr, None);

@@ -5,6 +5,7 @@ use std::io::{self, Write};
 use std::path::MAIN_SEPARATOR;
 
 use ansi_term::Color;
+use dirs;
 use env_logger::{Builder, Formatter};
 use log::{Level, LevelFilter, Record};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -113,10 +114,11 @@ pub fn expand_tilde_path(path: &str) -> Cow<str> {
     let path_after_tilde = &path[1..];
 
     // on support windows `\`
-    if path_after_tilde.is_empty() || path_after_tilde.starts_with('/')
+    if path_after_tilde.is_empty()
+        || path_after_tilde.starts_with('/')
         || path_after_tilde.starts_with(MAIN_SEPARATOR)
     {
-        if let Some(hd) = env::home_dir() {
+        if let Some(hd) = dirs::home_dir() {
             let result = format!("{}{}", hd.display(), path_after_tilde);
             result.into()
         } else {

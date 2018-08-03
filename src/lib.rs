@@ -1,4 +1,5 @@
 extern crate ansi_term;
+extern crate dirs;
 extern crate env_logger;
 #[macro_use]
 extern crate futures;
@@ -13,6 +14,19 @@ extern crate time;
 extern crate tokio;
 extern crate tokio_threadpool;
 extern crate toml;
+
+#[cfg(
+    any(
+        target_os = "bitrig",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )
+)]
+extern crate mio;
 
 mod buffer;
 mod client;

@@ -4,12 +4,13 @@ use std::time::{Duration, Instant};
 
 use futures::{future, Async, Future, Poll, Stream};
 use tokio;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::timer;
 
 use super::buffer::{BufRange, SharedBuf};
 use super::config::ClientConfig;
 use super::crypto::{Crypto, KeyPair};
+use super::net::ProxyStream;
 use super::socks5;
 use super::transfer;
 use super::util::RandomBytes;
@@ -45,7 +46,7 @@ impl Client {
             .map_err(|e| error!("error accepting socket; error = {:?}", e))
             .for_each(move |conn| {
                 let peer_addr = conn.peer_addr().unwrap();
-                let client = Arc::new(conn);
+                let client = ProxyStream::new(conn);
 
                 let socks5 = socks5::Handshake::new(
                     socks5_reply.clone(),
@@ -61,7 +62,7 @@ impl Client {
                     let config = handshake_config.clone();
                     let req = reqaddr.get().unwrap();
                     let req = format!("{}:{}", req.0, req.1);
-                    let server = Arc::new(conn);
+                    let server = ProxyStream::new(conn);
 
                     match Handshake::new(config, server.clone(), reqaddr) {
                         Ok(hand) => future::ok(hand.map(|keypair| (req, keypair, server))),
@@ -120,7 +121,7 @@ enum HandshakeState {
 
 struct Handshake {
     config: Arc<ClientConfig>,
-    server: Arc<TcpStream>,
+    server: ProxyStream,
     addr: socks5::ReqAddr,
 
     crypto: Crypto,
@@ -131,7 +132,7 @@ struct Handshake {
 impl Handshake {
     fn new(
         config: Arc<ClientConfig>,
-        server: Arc<TcpStream>,
+        server: ProxyStream,
         addr: socks5::ReqAddr,
     ) -> io::Result<Handshake> {
         let crypto = Crypto::new(
@@ -240,7 +241,7 @@ impl Future for Handshake {
                     self.state = HandshakeState::ClientReq(range);
                 }
                 HandshakeState::ClientReq(range) => {
-                    try_ready!(self.buf.write_exact(&mut (&*self.server), range));
+                    try_ready!(self.buf.write_exact(&mut self.server, range));
 
                     let resp_header_len = v3::DATA_LEN_LEN + self.crypto.tag_len();
                     self.state = HandshakeState::ServerRespHeader(BufRange {
@@ -249,7 +250,7 @@ impl Future for Handshake {
                     });
                 }
                 HandshakeState::ServerRespHeader(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.server), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.server, range));
                     let buf = self.buf.get_mut_range(range);
                     let len = self.crypto.decrypt(buf)?;
 
@@ -271,7 +272,7 @@ impl Future for Handshake {
                     });
                 }
                 HandshakeState::ServerRespData(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.server), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.server, range));
                     let len = {
                         let buf = self.buf.get_mut_range(range);
                         self.crypto.decrypt(buf)?

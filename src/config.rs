@@ -79,12 +79,14 @@ impl ClientConfig {
             None => Cipher::default(),
         };
 
-        let server = raw.server
+        let server = raw
+            .server
             .to_socket_addrs()
             .map(|mut addrs| addrs.nth(0).unwrap())
             .map_err(|err| format!("resolve server {}, {}", raw.server, err))?;
 
-        let listen = raw.listen
+        let listen = raw
+            .listen
             .parse::<SocketAddr>()
             .map_err(|err| format!("parse listen {}, {}", raw.listen, err))?;
 
@@ -102,7 +104,8 @@ impl ServerConfig {
     pub fn new(path: &str) -> Result<ServerConfig> {
         let raw: TomlServerConfig = read_toml_config(path)?;
 
-        let listen = raw.server
+        let listen = raw
+            .server
             .listen
             .parse::<SocketAddr>()
             .map_err(|err| format!("parse listen {}, {}", raw.server.listen, err))?;

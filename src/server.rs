@@ -14,7 +14,7 @@ use tokio::timer;
 use super::buffer::{BufRange, SharedBuf};
 use super::config::{Digest, ServerConfig, User};
 use super::crypto::{Cipher, Crypto, KeyPair};
-use super::net::TcpConnect;
+use super::net::{ProxyStream, TcpConnect};
 use super::socks5;
 use super::transfer;
 use super::util::{self, RandomBytes};
@@ -43,13 +43,12 @@ impl Server {
             .map_err(|e| error!("error accepting socket; error = {:?}", e))
             .for_each(move |client| {
                 let peer_addr = client.peer_addr().unwrap();
-                let client = Arc::new(client);
+                let client = ProxyStream::new(client);
 
-                let handshake =
-                    Handshake::new(client.peer_addr().unwrap(), users.clone(), client.clone());
+                let handshake = Handshake::new(peer_addr, users.clone(), client.clone());
 
                 // timeout random [10, 40)
-                let secs = (rand::random::<u8>() % 30 + 10) as u64;
+                let secs = u64::from(rand::random::<u8>() % 30 + 10);
                 let timeout = Instant::now() + Duration::from_secs(secs);
 
                 let handshake =
@@ -96,8 +95,8 @@ struct Context {
     addr: String,
     cipher: Cipher,
     keypair: KeyPair,
-    client: Arc<TcpStream>,
-    remote: Arc<TcpStream>,
+    client: ProxyStream,
+    remote: ProxyStream,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -140,7 +139,7 @@ impl Request {
 struct Handshake {
     peer_addr: SocketAddr,
     users: Arc<HashMap<Digest, User>>,
-    client: Arc<TcpStream>,
+    client: ProxyStream,
 
     buf: SharedBuf,
     state: HandshakeState,
@@ -149,11 +148,7 @@ struct Handshake {
 }
 
 impl Handshake {
-    fn new(
-        peer: SocketAddr,
-        users: Arc<HashMap<Digest, User>>,
-        client: Arc<TcpStream>,
-    ) -> Handshake {
+    fn new(peer: SocketAddr, users: Arc<HashMap<Digest, User>>, client: ProxyStream) -> Handshake {
         Handshake {
             peer_addr: peer,
             users,
@@ -408,7 +403,7 @@ impl Future for Handshake {
                 // |  2  |   Var.  |  32  |
                 // +-----+---------+------+
                 HandshakeState::ReqHeader(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.client), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
                     let need = self.parse_header(range)?;
                     self.state = HandshakeState::ReqData(BufRange {
                         start: 0,
@@ -416,7 +411,7 @@ impl Future for Handshake {
                     });
                 }
                 HandshakeState::ReqData(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.client), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
                     self.state = match self.parse_data(range)? {
                         Some(connect) => {
                             self.req.connect = Some(connect);
@@ -447,7 +442,7 @@ impl Future for Handshake {
                     self.state = HandshakeState::RespToClient(range);
                 }
                 HandshakeState::RespToClient(range) => {
-                    try_ready!(self.buf.write_exact(&mut (&*self.client), range));
+                    try_ready!(self.buf.write_exact(&mut self.client, range));
                     self.state = HandshakeState::Done;
 
                     let req = mem::replace(&mut self.req, Request::none());
@@ -465,7 +460,7 @@ impl Future for Handshake {
                         cipher: req.cipher.unwrap(),
                         keypair: req.keypair.unwrap(),
                         client: self.client.clone(),
-                        remote: Arc::new(remote),
+                        remote: ProxyStream::new(remote),
                     }));
                 }
                 HandshakeState::Done => panic!("poll a done future"),

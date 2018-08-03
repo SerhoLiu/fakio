@@ -1,6 +1,6 @@
 [package]
 name = "fakio"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Serho Liu <serholiu@gmail.com>"]
 
 [lib]
@@ -22,8 +22,10 @@ env_logger = "0.5"
 futures = "0.1"
 tokio = "0.1"
 tokio-threadpool = "0.1"
-ring = "0.11"
+ring = "0.13"
 rand = "0.5"
 toml = "0.4"
 serde = "1.0"
 serde_derive = "1.0"
+mio = "0.6"
+dirs = "1"

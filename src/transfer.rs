@@ -1,27 +1,25 @@
 use std::fmt;
 use std::io;
-use std::net::Shutdown;
-use std::sync::Arc;
 
 use futures::{future, Async, Future, Poll};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::buffer::{BufRange, SharedBuf};
 use super::crypto::{Cipher, Crypto};
 use super::v3;
 
-pub fn encrypt(
-    reader: Arc<TcpStream>,
-    writer: Arc<TcpStream>,
+pub fn encrypt<In: AsyncRead, Out: AsyncWrite>(
+    reader: In,
+    writer: Out,
     cipher: Cipher,
     key: &[u8],
 ) -> impl Future<Item = (u64, u64), Error = io::Error> {
     future::result(EncTransfer::new(reader, writer, cipher, key)).flatten()
 }
 
-pub fn decrypt(
-    reader: Arc<TcpStream>,
-    writer: Arc<TcpStream>,
+pub fn decrypt<In: AsyncRead, Out: AsyncWrite>(
+    reader: In,
+    writer: Out,
     cipher: Cipher,
     key: &[u8],
 ) -> impl Future<Item = (u64, u64), Error = io::Error> {
@@ -36,9 +34,9 @@ enum EncState {
     Done,
 }
 
-pub struct EncTransfer {
-    reader: Arc<TcpStream>,
-    writer: Arc<TcpStream>,
+pub struct EncTransfer<In, Out> {
+    reader: In,
+    writer: Out,
     read_eof: bool,
     nread: u64,
     nwrite: u64,
@@ -50,13 +48,8 @@ pub struct EncTransfer {
     buf: SharedBuf,
 }
 
-impl EncTransfer {
-    fn new(
-        reader: Arc<TcpStream>,
-        writer: Arc<TcpStream>,
-        cipher: Cipher,
-        key: &[u8],
-    ) -> io::Result<EncTransfer> {
+impl<In: AsyncRead, Out: AsyncWrite> EncTransfer<In, Out> {
+    fn new(reader: In, writer: Out, cipher: Cipher, key: &[u8]) -> io::Result<Self> {
         let crypto = Crypto::new(cipher, key, key)?;
         let read_range = BufRange {
             start: v3::DATA_LEN_LEN + crypto.tag_len(),
@@ -76,7 +69,7 @@ impl EncTransfer {
     }
 }
 
-impl Future for EncTransfer {
+impl<In: AsyncRead, Out: AsyncWrite> Future for EncTransfer<In, Out> {
     type Item = (u64, u64);
     type Error = io::Error;
 
@@ -85,12 +78,11 @@ impl Future for EncTransfer {
             match self.state {
                 EncState::Reading => {
                     let (eof, range) =
-                        try_ready!(self.buf.read_most(&mut (&*self.reader), self.read_range));
+                        try_ready!(self.buf.read_most(&mut self.reader, self.read_range));
                     self.read_eof = eof;
 
                     let data_len = range.end - range.start;
                     self.nread += data_len as u64;
-
                     if eof && data_len == 0 {
                         // read done and no more data need write
                         self.state = EncState::Shutdown;
@@ -128,7 +120,7 @@ impl Future for EncTransfer {
                     }
                 }
                 EncState::Writing(range) => {
-                    try_ready!(self.buf.write_exact(&mut (&*self.writer), range));
+                    try_ready!(self.buf.write_exact(&mut self.writer, range));
                     self.nwrite += (range.end - range.start) as u64;
 
                     if self.read_eof {
@@ -138,7 +130,7 @@ impl Future for EncTransfer {
                     }
                 }
                 EncState::Shutdown => {
-                    (&*self.writer).shutdown(Shutdown::Write)?;
+                    self.writer.shutdown()?;
                     self.state = EncState::Done;
                     return Ok(Async::Ready((self.nread, self.nwrite)));
                 }
@@ -158,9 +150,9 @@ enum DecState {
     Done,
 }
 
-pub struct DecTransfer {
-    reader: Arc<TcpStream>,
-    writer: Arc<TcpStream>,
+pub struct DecTransfer<In, Out> {
+    reader: In,
+    writer: Out,
     nread: u64,
     nwrite: u64,
 
@@ -171,13 +163,8 @@ pub struct DecTransfer {
     buf: SharedBuf,
 }
 
-impl DecTransfer {
-    fn new(
-        reader: Arc<TcpStream>,
-        writer: Arc<TcpStream>,
-        cipher: Cipher,
-        key: &[u8],
-    ) -> io::Result<DecTransfer> {
+impl<In: AsyncRead, Out: AsyncWrite> DecTransfer<In, Out> {
+    fn new(reader: In, writer: Out, cipher: Cipher, key: &[u8]) -> io::Result<Self> {
         let crypto = Crypto::new(cipher, key, key)?;
         let head_range = BufRange {
             start: 0,
@@ -197,7 +184,7 @@ impl DecTransfer {
     }
 }
 
-impl Future for DecTransfer {
+impl<In: AsyncRead, Out: AsyncWrite> Future for DecTransfer<In, Out> {
     type Item = (u64, u64);
     type Error = io::Error;
 
@@ -206,7 +193,7 @@ impl Future for DecTransfer {
             match self.state {
                 DecState::TryReadHead => {
                     let (eof, range) =
-                        try_ready!(self.buf.read_most(&mut (&*self.reader), self.head_range));
+                        try_ready!(self.buf.read_most(&mut self.reader, self.head_range));
                     let data_len = range.end - range.start;
                     if eof && data_len == 0 {
                         self.state = DecState::Shutdown;
@@ -220,7 +207,7 @@ impl Future for DecTransfer {
                 DecState::ReadHead(range) => {
                     // try read is read all header
                     if range.start != range.end {
-                        try_ready!(self.buf.read_exact(&mut (&*self.reader), range));
+                        try_ready!(self.buf.read_exact(&mut self.reader, range));
                     }
                     let range = self.head_range;
 
@@ -241,7 +228,7 @@ impl Future for DecTransfer {
                     });
                 }
                 DecState::ReadData(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut (&*self.reader), range));
+                    let range = try_ready!(self.buf.read_exact(&mut self.reader, range));
                     let len = {
                         let buf = self.buf.get_mut_range(range);
                         self.crypto.decrypt(buf)?
@@ -249,12 +236,12 @@ impl Future for DecTransfer {
                     self.state = DecState::Writing(BufRange { start: 0, end: len })
                 }
                 DecState::Writing(range) => {
-                    try_ready!(self.buf.write_exact(&mut (&*self.writer), range));
+                    try_ready!(self.buf.write_exact(&mut self.writer, range));
                     self.nwrite += (range.end - range.start) as u64;
                     self.state = DecState::TryReadHead;
                 }
                 DecState::Shutdown => {
-                    (&*self.writer).shutdown(Shutdown::Write)?;
+                    self.writer.shutdown()?;
                     self.state = DecState::Done;
                     return Ok(Async::Ready((self.nread, self.nwrite)));
                 }
