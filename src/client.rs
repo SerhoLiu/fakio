@@ -43,7 +43,7 @@ impl Client {
 
         let clients = listener
             .incoming()
-            .map_err(|e| error!("error accepting socket; error = {:?}", e))
+            .map_err(|e| error!("accepting socket, {}", e))
             .for_each(move |conn| {
                 let peer_addr = conn.peer_addr().unwrap();
                 let client = ProxyStream::new(conn);
@@ -71,8 +71,8 @@ impl Client {
                 });
 
                 let timeout = Instant::now() + Duration::from_secs(HANDSHAKE_TIMEOUT);
-                let handshake =
-                    timer::Deadline::new(handshake, timeout).map_err(|e| other(&format!("{}", e)));
+                let handshake = timer::Deadline::new(handshake, timeout)
+                    .map_err(|e| other(&format!("handshake timeout, {}", e)));
 
                 let transfer_config = config.clone();
 

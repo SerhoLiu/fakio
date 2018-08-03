@@ -40,7 +40,7 @@ impl Server {
 
         let server = listener
             .incoming()
-            .map_err(|e| error!("error accepting socket; error = {:?}", e))
+            .map_err(|e| error!("accepting socket, {}", e))
             .for_each(move |client| {
                 let peer_addr = client.peer_addr().unwrap();
                 let client = ProxyStream::new(client);
@@ -51,8 +51,8 @@ impl Server {
                 let secs = u64::from(rand::random::<u8>() % 30 + 10);
                 let timeout = Instant::now() + Duration::from_secs(secs);
 
-                let handshake =
-                    timer::Deadline::new(handshake, timeout).map_err(|e| other(&format!("{}", e)));
+                let handshake = timer::Deadline::new(handshake, timeout)
+                    .map_err(|e| other(&format!("client handshake timeout, {}", e)));
                 let transfer = handshake.and_then(move |context| {
                     let (ckey, skey) = context.keypair.split();
                     let trans = transfer::encrypt(
