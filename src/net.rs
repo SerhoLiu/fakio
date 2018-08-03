@@ -111,6 +111,8 @@ pub struct ProxyStream(Arc<TcpStream>);
 
 impl ProxyStream {
     pub fn new(stream: TcpStream) -> ProxyStream {
+        stream.set_nodelay(true).unwrap();
+
         ProxyStream(Arc::new(stream))
     }
 }

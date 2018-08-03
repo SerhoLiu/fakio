@@ -57,8 +57,6 @@ impl Client {
 
                 let handshake_config = config.clone();
                 let handshake = socks5.and_then(move |(conn, reqaddr)| {
-                    conn.set_nodelay(true).unwrap();
-
                     let config = handshake_config.clone();
                     let req = reqaddr.get().unwrap();
                     let req = format!("{}:{}", req.0, req.1);
