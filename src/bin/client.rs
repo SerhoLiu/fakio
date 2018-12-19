@@ -1,4 +1,3 @@
-extern crate fakio;
 #[macro_use]
 extern crate log;
 

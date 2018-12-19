@@ -60,7 +60,8 @@ impl Server {
                         context.client.clone(),
                         context.cipher,
                         skey,
-                    ).join(transfer::decrypt(
+                    )
+                    .join(transfer::decrypt(
                         context.client.clone(),
                         context.remote.clone(),
                         context.cipher,

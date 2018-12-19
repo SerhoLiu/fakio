@@ -22,7 +22,8 @@ impl fmt::Display for ColorLevel {
             Level::Info => Color::Green.paint("INFO "),
             Level::Warn => Color::Yellow.paint("WARN "),
             Level::Error => Color::Red.paint("ERROR"),
-        }.fmt(f)
+        }
+        .fmt(f)
     }
 }
 

@@ -65,7 +65,8 @@ impl Client {
                     match Handshake::new(config, server.clone(), reqaddr) {
                         Ok(hand) => future::ok(hand.map(|keypair| (req, keypair, server))),
                         Err(e) => future::err(e),
-                    }.flatten()
+                    }
+                    .flatten()
                 });
 
                 let timeout = Instant::now() + Duration::from_secs(HANDSHAKE_TIMEOUT);
@@ -81,7 +82,8 @@ impl Client {
                         server.clone(),
                         transfer_config.cipher,
                         ckey,
-                    ).join(transfer::decrypt(
+                    )
+                    .join(transfer::decrypt(
                         server.clone(),
                         client.clone(),
                         transfer_config.cipher,

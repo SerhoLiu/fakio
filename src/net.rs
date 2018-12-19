@@ -8,17 +8,15 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{ConnectFuture, TcpStream};
 use tokio_threadpool::blocking;
 
-#[cfg(
-    any(
-        target_os = "bitrig",
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "ios",
-        target_os = "macos",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    )
-)]
+#[cfg(any(
+    target_os = "bitrig",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "ios",
+    target_os = "macos",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 use mio;
 
 #[derive(Copy, Clone, Debug)]
@@ -118,17 +116,15 @@ impl ProxyStream {
 }
 
 impl Read for ProxyStream {
-    #[cfg(
-        any(
-            target_os = "bitrig",
-            target_os = "dragonfly",
-            target_os = "freebsd",
-            target_os = "ios",
-            target_os = "macos",
-            target_os = "netbsd",
-            target_os = "openbsd"
-        )
-    )]
+    #[cfg(any(
+        target_os = "bitrig",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match (&mut (&*self.0)).read(buf) {
             Ok(n) => return Ok(n),
@@ -148,19 +144,15 @@ impl Read for ProxyStream {
         }
     }
 
-    #[cfg(
-        not(
-            any(
-                target_os = "bitrig",
-                target_os = "dragonfly",
-                target_os = "freebsd",
-                target_os = "ios",
-                target_os = "macos",
-                target_os = "netbsd",
-                target_os = "openbsd"
-            )
-        )
-    )]
+    #[cfg(not(any(
+        target_os = "bitrig",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )))]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         (&mut (&*self.0)).read(buf)
     }

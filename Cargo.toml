@@ -2,6 +2,7 @@
 name = "fakio"
 version = "0.2.0"
 authors = ["Serho Liu <serholiu@gmail.com>"]
+edition = "2018"
 
 [lib]
 name = "fakio"

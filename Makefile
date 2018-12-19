@@ -8,8 +8,8 @@ release:
 	cargo build --release
 
 clippy:
-	cargo +nightly clippy -- -A many_single_char_names
+	cargo clippy -- -A many_single_char_names
 
 format:
-	cargo +nightly fmt -- --check || exit 0
-	cargo +nightly fmt || exit 0
+	cargo fmt -- --check || exit 0
+	cargo fmt || exit 0
