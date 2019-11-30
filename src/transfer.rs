@@ -1,266 +1,107 @@
 use std::fmt;
 use std::io;
+use std::marker::Unpin;
 
-use futures::{future, Async, Future, Poll};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use super::buffer::{BufRange, SharedBuf};
 use super::crypto::{Cipher, Crypto};
 use super::v3;
 
-pub fn encrypt<In: AsyncRead, Out: AsyncWrite>(
-    reader: In,
-    writer: Out,
+pub async fn encrypt<In: AsyncReadExt + Unpin, Out: AsyncWriteExt + Unpin>(
+    mut reader: In,
+    mut writer: Out,
     cipher: Cipher,
     key: &[u8],
-) -> impl Future<Item = (u64, u64), Error = io::Error> {
-    future::result(EncTransfer::new(reader, writer, cipher, key)).flatten()
+) -> io::Result<(usize, usize)> {
+    let mut nread = 0;
+    let mut nwrite = 0;
+    let mut crypto = Crypto::new(cipher, key, key)?;
+
+    let crypto_tag_len = crypto.tag_len();
+
+    let mut buf = [0u8; v3::MAX_BUFFER_SIZE];
+    let start = v3::DATA_LEN_LEN + crypto_tag_len;
+    let end = v3::MAX_BUFFER_SIZE - crypto_tag_len;
+
+    loop {
+        let n = reader.read(&mut buf[start..end]).await?;
+        // read eof
+        if n == 0 {
+            writer.shutdown().await?;
+            return Ok((nread, nwrite));
+        }
+        nread += n;
+
+        // Header
+        let data_len = n + crypto_tag_len;
+        // Big Endian
+        buf[0] = (data_len >> 8) as u8;
+        buf[1] = data_len as u8;
+        crypto.encrypt(&mut buf[..start], 2)?;
+
+        // Data
+        let data_end = start + n + crypto_tag_len;
+        crypto.encrypt(&mut buf[start..data_end], n)?;
+
+        writer.write_all(&buf[..data_end]).await?;
+        nwrite += data_end;
+    }
 }
 
-pub fn decrypt<In: AsyncRead, Out: AsyncWrite>(
-    reader: In,
-    writer: Out,
+pub async fn decrypt<In: AsyncReadExt + Unpin, Out: AsyncWriteExt + Unpin>(
+    mut reader: In,
+    mut writer: Out,
     cipher: Cipher,
     key: &[u8],
-) -> impl Future<Item = (u64, u64), Error = io::Error> {
-    future::result(DecTransfer::new(reader, writer, cipher, key)).flatten()
-}
+) -> io::Result<(usize, usize)> {
+    let mut nread = 0;
+    let mut nwrite = 0;
+    let mut crypto = Crypto::new(cipher, key, key)?;
 
-#[derive(Copy, Clone, Debug)]
-enum EncState {
-    Reading,
-    Writing(BufRange),
-    Shutdown,
-    Done,
-}
+    let crypto_tag_len = crypto.tag_len();
 
-pub struct EncTransfer<In, Out> {
-    reader: In,
-    writer: Out,
-    read_eof: bool,
-    nread: u64,
-    nwrite: u64,
+    let mut buf = [0u8; v3::MAX_BUFFER_SIZE];
+    let header_len = v3::DATA_LEN_LEN + crypto_tag_len;
 
-    state: EncState,
-    crypto: Crypto,
-
-    read_range: BufRange,
-    buf: SharedBuf,
-}
-
-impl<In: AsyncRead, Out: AsyncWrite> EncTransfer<In, Out> {
-    fn new(reader: In, writer: Out, cipher: Cipher, key: &[u8]) -> io::Result<Self> {
-        let crypto = Crypto::new(cipher, key, key)?;
-        let read_range = BufRange {
-            start: v3::DATA_LEN_LEN + crypto.tag_len(),
-            end: v3::MAX_BUFFER_SIZE - crypto.tag_len(),
-        };
-        Ok(EncTransfer {
-            reader,
-            writer,
-            read_eof: false,
-            nread: 0,
-            nwrite: 0,
-            state: EncState::Reading,
-            crypto,
-            read_range,
-            buf: SharedBuf::new(v3::MAX_BUFFER_SIZE),
-        })
-    }
-}
-
-impl<In: AsyncRead, Out: AsyncWrite> Future for EncTransfer<In, Out> {
-    type Item = (u64, u64);
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<(u64, u64), io::Error> {
-        loop {
-            match self.state {
-                EncState::Reading => {
-                    let (eof, range) =
-                        try_ready!(self.buf.read_most(&mut self.reader, self.read_range));
-                    self.read_eof = eof;
-
-                    let data_len = range.end - range.start;
-                    self.nread += data_len as u64;
-                    if eof && data_len == 0 {
-                        // read done and no more data need write
-                        self.state = EncState::Shutdown;
-                    } else {
-                        let tag_len = self.crypto.tag_len();
-                        let data_range = BufRange {
-                            start: range.start,
-                            end: range.end + tag_len,
-                        };
-
-                        // Header
-                        {
-                            let range = BufRange {
-                                start: 0,
-                                end: range.start,
-                            };
-                            let head = self.buf.get_mut_range(range);
-
-                            let data_len = data_len + tag_len;
-                            // Big Endian
-                            head[0] = (data_len >> 8) as u8;
-                            head[1] = data_len as u8;
-                            self.crypto.encrypt(head, 2)?;
-                        }
-
-                        // Data
-                        {
-                            let data = self.buf.get_mut_range(data_range);
-                            self.crypto.encrypt(data, data_len)?;
-                        }
-                        self.state = EncState::Writing(BufRange {
-                            start: 0,
-                            end: data_range.end,
-                        });
-                    }
-                }
-                EncState::Writing(range) => {
-                    try_ready!(self.buf.write_exact(&mut self.writer, range));
-                    self.nwrite += (range.end - range.start) as u64;
-
-                    if self.read_eof {
-                        self.state = EncState::Shutdown;
-                    } else {
-                        self.state = EncState::Reading;
-                    }
-                }
-                EncState::Shutdown => {
-                    self.writer.shutdown()?;
-                    self.state = EncState::Done;
-                    return Ok(Async::Ready((self.nread, self.nwrite)));
-                }
-                EncState::Done => panic!("poll a done future"),
-            }
+    loop {
+        let n = reader.read(&mut buf[..header_len]).await?;
+        // read eof
+        if n == 0 {
+            writer.shutdown().await?;
+            return Ok((nread, nwrite));
         }
-    }
-}
+        nread += n;
 
-#[derive(Copy, Clone, Debug)]
-enum DecState {
-    TryReadHead,
-    ReadHead(BufRange),
-    ReadData(BufRange),
-    Writing(BufRange),
-    Shutdown,
-    Done,
-}
-
-pub struct DecTransfer<In, Out> {
-    reader: In,
-    writer: Out,
-    nread: u64,
-    nwrite: u64,
-
-    state: DecState,
-    crypto: Crypto,
-
-    head_range: BufRange,
-    buf: SharedBuf,
-}
-
-impl<In: AsyncRead, Out: AsyncWrite> DecTransfer<In, Out> {
-    fn new(reader: In, writer: Out, cipher: Cipher, key: &[u8]) -> io::Result<Self> {
-        let crypto = Crypto::new(cipher, key, key)?;
-        let head_range = BufRange {
-            start: 0,
-            end: v3::DATA_LEN_LEN + crypto.tag_len(),
-        };
-
-        Ok(DecTransfer {
-            reader,
-            writer,
-            nread: 0,
-            nwrite: 0,
-            state: DecState::TryReadHead,
-            crypto,
-            head_range,
-            buf: SharedBuf::new(v3::MAX_BUFFER_SIZE),
-        })
-    }
-}
-
-impl<In: AsyncRead, Out: AsyncWrite> Future for DecTransfer<In, Out> {
-    type Item = (u64, u64);
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<(u64, u64), io::Error> {
-        loop {
-            match self.state {
-                DecState::TryReadHead => {
-                    let (eof, range) =
-                        try_ready!(self.buf.read_most(&mut self.reader, self.head_range));
-                    let data_len = range.end - range.start;
-                    if eof && data_len == 0 {
-                        self.state = DecState::Shutdown;
-                    } else {
-                        self.state = DecState::ReadHead(BufRange {
-                            start: range.end,
-                            end: self.head_range.end,
-                        })
-                    }
-                }
-                DecState::ReadHead(range) => {
-                    // try read is read all header
-                    if range.start != range.end {
-                        try_ready!(self.buf.read_exact(&mut self.reader, range));
-                    }
-                    let range = self.head_range;
-
-                    let buf = self.buf.get_mut_range(range);
-                    let len = self.crypto.decrypt(buf)?;
-
-                    // +-----+---------+
-                    // | LEN | LEN TAG |
-                    // +-----+---------+
-                    assert_eq!(len, v3::DATA_LEN_LEN);
-                    let data_len = ((buf[0] as usize) << 8) + (buf[1] as usize);
-
-                    self.nread += (data_len + range.end) as u64;
-
-                    self.state = DecState::ReadData(BufRange {
-                        start: 0,
-                        end: data_len,
-                    });
-                }
-                DecState::ReadData(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.reader, range));
-                    let len = {
-                        let buf = self.buf.get_mut_range(range);
-                        self.crypto.decrypt(buf)?
-                    };
-                    self.state = DecState::Writing(BufRange { start: 0, end: len })
-                }
-                DecState::Writing(range) => {
-                    try_ready!(self.buf.write_exact(&mut self.writer, range));
-                    self.nwrite += (range.end - range.start) as u64;
-                    self.state = DecState::TryReadHead;
-                }
-                DecState::Shutdown => {
-                    self.writer.shutdown()?;
-                    self.state = DecState::Done;
-                    return Ok(Async::Ready((self.nread, self.nwrite)));
-                }
-                DecState::Done => panic!("poll a done future"),
-            }
+        // try read all header
+        if n != header_len {
+            reader.read_exact(&mut buf[n..header_len]).await?;
+            nread += header_len - n;
         }
+
+        let len = crypto.decrypt(&mut buf[..header_len])?;
+        assert_eq!(len, v3::DATA_LEN_LEN);
+        let data_len = ((buf[0] as usize) << 8) + (buf[1] as usize);
+
+        // read data
+        reader.read_exact(&mut buf[..data_len]).await?;
+        nread += data_len;
+        let len = crypto.decrypt(&mut buf[..data_len])?;
+
+        writer.write_all(&buf[..len]).await?;
+        nwrite += len;
     }
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct Stat {
-    enc_read: u64,
-    enc_write: u64,
-    dec_read: u64,
-    dec_write: u64,
+    enc_read: usize,
+    enc_write: usize,
+    dec_read: usize,
+    dec_write: usize,
 }
 
 impl Stat {
-    pub fn new(enc: (u64, u64), dec: (u64, u64)) -> Stat {
+    pub fn new(enc: (usize, usize), dec: (usize, usize)) -> Stat {
         Stat {
             enc_read: enc.0,
             enc_write: enc.1,

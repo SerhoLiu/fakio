@@ -8,12 +8,13 @@ use std::result;
 
 use ring::digest;
 use serde::de;
+use serde_derive::Deserialize;
 use toml;
 
 use super::crypto::Cipher;
 use super::v3;
 
-pub type Result<T> = result::Result<T, Box<error::Error>>;
+pub type Result<T> = result::Result<T, Box<dyn error::Error>>;
 
 #[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
 pub struct Digest {

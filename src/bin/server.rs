@@ -1,12 +1,12 @@
-#[macro_use]
-extern crate log;
-
 use std::env;
 use std::process;
 
-use fakio::{Server, ServerConfig};
+use log::error;
 
-fn main() {
+use fakio::{server, ServerConfig};
+
+#[tokio::main]
+async fn main() {
     fakio::init_logger();
 
     let config_path = env::args()
@@ -22,8 +22,7 @@ fn main() {
         }
     };
 
-    let server = Server::new(config);
-    if let Err(e) = server.serve() {
+    if let Err(e) = server::serve(config).await {
         error!("start client failed, {}", e);
     }
 }

@@ -1,16 +1,11 @@
 //! Socks5 protocol definition ([RFC1928](https://tools.ietf.org/rfc/rfc1928.txt))
 
 use std::io;
-use std::mem;
 use std::net::{self, SocketAddr};
 use std::str;
-use std::sync::Arc;
 
-use futures::{Async, Future, Poll};
-use tokio::net::{ConnectFuture, TcpStream};
-
-use super::buffer::{BufRange, SharedBuf};
-use super::net::ProxyStream;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 
 const VERSION: u8 = 0x05;
 const AUTH_METHOD_NONE: u8 = 0x00;
@@ -29,7 +24,6 @@ const REPLY_CONNECTION_REFUSED: u8 = 0x05;
 // +----+-----+-------+------+----------+----------+
 // | 1  |  1  | X'00' |  1   | Variable |    2     |
 // +----+-----+-------+------+----------+----------+
-
 const MAX_REQ_LEN: usize = 1 + 1 + 1 + 1 + 1 + 255 + 2;
 
 pub struct ReqAddr {
@@ -143,211 +137,85 @@ impl Reply {
     }
 }
 
-pub struct Handshake {
-    peer_addr: SocketAddr,
-    client: ProxyStream,
-    reply: Arc<Reply>,
+pub async fn handshake(
+    client: &mut TcpStream,
+    client_addr: SocketAddr,
     remote_addr: SocketAddr,
+    reply: &Reply,
+) -> io::Result<(TcpStream, ReqAddr)> {
+    let mut buf = [0u8; MAX_REQ_LEN];
 
-    buf: SharedBuf,
-    state: HandshakeState,
-
-    connect: Option<ConnectFuture>,
-    remote: io::Result<TcpStream>,
-    reqaddr: Option<ReqAddr>,
-}
-
-impl Handshake {
-    pub fn new(
-        reply: Arc<Reply>,
-        peer: SocketAddr,
-        client: ProxyStream,
-        remote: SocketAddr,
-    ) -> Handshake {
-        Handshake {
-            peer_addr: peer,
-            client,
-            reply,
-            remote_addr: remote,
-
-            buf: SharedBuf::new(MAX_REQ_LEN),
-            state: HandshakeState::AuthVersion(BufRange { start: 0, end: 1 }),
-
-            connect: None,
-            remote: Err(not_connected()),
-            reqaddr: None,
-        }
+    // auth version
+    client.read_exact(&mut buf[..1]).await?;
+    if buf[0] != VERSION {
+        return Err(other("only support socks version 5"));
     }
-}
 
-#[derive(Copy, Clone, Debug)]
-enum HandshakeState {
-    AuthVersion(BufRange),
-    AuthNmethod(BufRange),
-    AuthMethods(BufRange),
-    AuthEnd(BufRange),
+    // auth n method
+    client.read_exact(&mut buf[..1]).await?;
+    let n_method = buf[0] as usize;
 
-    ReqVersion(BufRange),
-    ReqHeader(BufRange),
-    ReqData(BufRange),
+    // methods
+    client.read_exact(&mut buf[..n_method]).await?;
+    if !(&buf[..n_method]).contains(&AUTH_METHOD_NONE) {
+        return Err(other("no supported auth method given"));
+    }
 
-    ConnectServer,
+    // resp auth
+    buf[0] = VERSION;
+    buf[1] = AUTH_METHOD_NONE;
+    client.write_all(&buf[..2]).await?;
 
-    ReqEnd(BufRange),
+    // req version
+    client.read_exact(&mut buf[..1]).await?;
+    if buf[0] != VERSION {
+        return Err(other("only support socks version 5"));
+    }
 
-    Done,
-}
-
-impl Future for Handshake {
-    type Item = (TcpStream, ReqAddr);
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<(TcpStream, ReqAddr), io::Error> {
-        loop {
-            match self.state {
-                HandshakeState::AuthVersion(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
-                    let buf = self.buf.get_ref_range(range);
-                    if buf[0] != VERSION {
-                        return Err(other("only support socks version 5"));
-                    }
-                    self.state = HandshakeState::AuthNmethod(BufRange {
-                        start: range.end,
-                        end: range.end + 1,
-                    });
-                }
-                HandshakeState::AuthNmethod(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
-                    let buf = self.buf.get_ref_range(range);
-                    self.state = HandshakeState::AuthMethods(BufRange {
-                        start: range.end,
-                        end: range.end + buf[0] as usize,
-                    });
-                }
-                HandshakeState::AuthMethods(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
-                    {
-                        let buf = self.buf.get_ref_range(range);
-                        if !buf.contains(&AUTH_METHOD_NONE) {
-                            return Err(other("no supported auth method given"));
-                        }
-                    }
-
-                    let range = BufRange { start: 0, end: 2 };
-                    let buf = self.buf.get_mut_range(range);
-                    buf[0] = VERSION;
-                    buf[1] = AUTH_METHOD_NONE;
-                    self.state = HandshakeState::AuthEnd(range)
-                }
-                HandshakeState::AuthEnd(range) => {
-                    try_ready!(self.buf.write_exact(&mut self.client, range));
-                    self.state = HandshakeState::ReqVersion(BufRange { start: 0, end: 1 })
-                }
-                HandshakeState::ReqVersion(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
-                    let buf = self.buf.get_ref_range(range);
-                    if buf[0] != VERSION {
-                        return Err(other("only support socks version 5"));
-                    }
-                    self.state = HandshakeState::ReqHeader(BufRange {
-                        start: range.end,
-                        // CMD +  RSV  + ATYP + 1
-                        end: range.end + 4,
-                    });
-                }
-                HandshakeState::ReqHeader(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
-                    let buf = self.buf.get_ref_range(range);
-                    if buf[0] != CMD_TCP_CONNECT {
-                        return Err(other("only support tcp connect command"));
-                    }
-                    let need = match buf[2] {
-                        // 4 bytes ipv4 and 2 bytes port, and already read more 1 bytes
-                        ADDR_TYPE_IPV4 => 4 + 2 - 1,
-                        // 16 bytes ipv6 and 2 bytes port
-                        ADDR_TYPE_IPV6 => 16 + 2 - 1,
-                        ADDR_TYPE_DOMAIN_NAME => (buf[3] as usize) + 2,
-                        n => {
-                            return Err(other(&format!("unknown ATYP received: {}", n)));
-                        }
-                    };
-                    self.state = HandshakeState::ReqData(BufRange {
-                        start: range.end,
-                        end: range.end + need,
-                    });
-                }
-                HandshakeState::ReqData(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
-                    // get addr info
-                    let range = BufRange {
-                        // VER - CMD -  RSV
-                        start: 1 + 1 + 1,
-                        end: range.end,
-                    };
-
-                    let reqaddr = ReqAddr::new(self.buf.get_ref_range(range));
-                    let addr = reqaddr.get()?;
-                    info!("{} - request {}:{}", self.peer_addr, addr.0, addr.1);
-
-                    self.reqaddr = Some(reqaddr);
-                    self.connect = Some(TcpStream::connect(&self.remote_addr));
-                    self.state = HandshakeState::ConnectServer;
-                }
-                HandshakeState::ConnectServer => {
-                    // now, connect remote server
-                    let rtype = match self.connect {
-                        Some(ref mut s) => match s.poll() {
-                            Ok(Async::Ready(conn)) => {
-                                self.remote = Ok(conn);
-                                REPLY_SUCCEEDED
-                            }
-                            Ok(Async::NotReady) => return Ok(Async::NotReady),
-                            Err(e) => {
-                                let kind = e.kind();
-                                self.remote = Err(e);
-                                if kind == io::ErrorKind::ConnectionRefused {
-                                    REPLY_CONNECTION_REFUSED
-                                } else {
-                                    REPLY_GENERAL_FAILURE
-                                }
-                            }
-                        },
-                        None => panic!("connect server on illegal state"),
-                    };
-
-                    let reply_len = self.reply.get(rtype, self.buf.get_mut());
-                    self.state = HandshakeState::ReqEnd(BufRange {
-                        start: 0,
-                        end: reply_len,
-                    })
-                }
-                HandshakeState::ReqEnd(range) => {
-                    try_ready!(self.buf.write_exact(&mut self.client, range));
-                    self.state = HandshakeState::Done;
-                    let remote = mem::replace(&mut self.remote, Err(not_connected()));
-                    let reqaddr = mem::replace(&mut self.reqaddr, None);
-                    match remote {
-                        Ok(conn) => return Ok(Async::Ready((conn, reqaddr.unwrap()))),
-                        Err(e) => {
-                            return Err(other(&format!(
-                                "connect remote {}, {}",
-                                self.remote_addr, e
-                            )))
-                        }
-                    }
-                }
-                HandshakeState::Done => panic!("poll a done future"),
-            };
+    // CMD +  RSV  + ATYP + 1
+    let n = 4usize;
+    client.read_exact(&mut buf[..n]).await?;
+    if buf[0] != CMD_TCP_CONNECT {
+        return Err(other("only support tcp connect command"));
+    }
+    let need = match buf[2] {
+        // 4 bytes ipv4 and 2 bytes port, and already read more 1 bytes
+        ADDR_TYPE_IPV4 => 4 + 2 - 1,
+        // 16 bytes ipv6 and 2 bytes port
+        ADDR_TYPE_IPV6 => 16 + 2 - 1,
+        ADDR_TYPE_DOMAIN_NAME => (buf[3] as usize) + 2,
+        n => {
+            return Err(other(&format!("unknown ATYP received: {}", n)));
         }
+    };
+
+    client.read_exact(&mut buf[n..n + need]).await?;
+    let req_addr = ReqAddr::new(&buf[2..n + need]);
+    let addr = req_addr.get()?;
+    info!("{} - request {}:{}", client_addr, addr.0, addr.1);
+
+    let remote = TcpStream::connect(&remote_addr).await;
+
+    let rtype = if let Err(ref e) = remote {
+        if e.kind() == io::ErrorKind::ConnectionRefused {
+            REPLY_CONNECTION_REFUSED
+        } else {
+            REPLY_GENERAL_FAILURE
+        }
+    } else {
+        REPLY_SUCCEEDED
+    };
+
+    let reply_len = reply.get(rtype, &mut buf[..]);
+    client.write_all(&mut buf[..reply_len]).await?;
+
+    match remote {
+        Ok(conn) => Ok((conn, req_addr)),
+        Err(e) => Err(other(&format!("connect remote {}, {}", remote_addr, e))),
     }
 }
 
 #[inline]
 fn other(desc: &str) -> io::Error {
     io::Error::new(io::ErrorKind::Other, desc)
-}
-
-#[inline]
-fn not_connected() -> io::Error {
-    io::Error::new(io::ErrorKind::NotConnected, "not connected")
 }

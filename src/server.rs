@@ -3,162 +3,120 @@ use std::io;
 use std::mem;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-use futures::{future, Async, Future, Poll, Stream};
+use futures::future::try_join;
 use rand;
 use tokio;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::timer;
+use tokio::prelude::*;
+use tokio::time::{timeout, Duration};
 
-use super::buffer::{BufRange, SharedBuf};
 use super::config::{Digest, ServerConfig, User};
 use super::crypto::{Cipher, Crypto, KeyPair};
-use super::net::{ProxyStream, TcpConnect};
 use super::socks5;
-use super::transfer;
+use super::transfer::{self, Stat};
 use super::util::{self, RandomBytes};
 use super::v3;
 
-pub struct Server {
-    config: ServerConfig,
-}
+pub async fn serve(config: ServerConfig) -> io::Result<()> {
+    let mut listener = TcpListener::bind(&config.listen)
+        .await
+        .map_err(|e| other(&format!("listen on {}, {}", config.listen, e)))?;
 
-impl Server {
-    pub fn new(config: ServerConfig) -> Server {
-        Server { config }
-    }
+    info!("Listening on {}", config.listen);
+    let users = Arc::new(config.users);
 
-    pub fn serve(self) -> io::Result<()> {
-        let users = Arc::new(self.config.users);
+    loop {
+        match listener.accept().await {
+            Ok((client, client_addr)) => {
+                let users = users.clone();
 
-        let listen = self.config.listen;
-        let listener =
-            TcpListener::bind(&listen).map_err(|e| other(&format!("bind on {}, {}", listen, e)))?;
-
-        info!("Listening on {}", listen);
-
-        let server = listener
-            .incoming()
-            .map_err(|e| error!("accepting socket, {}", e))
-            .for_each(move |client| {
-                let peer_addr = client.peer_addr().unwrap();
-                let client = ProxyStream::new(client);
-
-                let handshake = Handshake::new(peer_addr, users.clone(), client.clone());
-
-                // timeout random [10, 40)
-                let secs = u64::from(rand::random::<u8>() % 30 + 10);
-                let timeout = Instant::now() + Duration::from_secs(secs);
-
-                let handshake = timer::Deadline::new(handshake, timeout)
-                    .map_err(|e| other(&format!("client handshake timeout, {}", e)));
-                let transfer = handshake.and_then(move |context| {
-                    let (ckey, skey) = context.keypair.split();
-                    let trans = transfer::encrypt(
-                        context.remote.clone(),
-                        context.client.clone(),
-                        context.cipher,
-                        skey,
-                    )
-                    .join(transfer::decrypt(
-                        context.client.clone(),
-                        context.remote.clone(),
-                        context.cipher,
-                        ckey,
-                    ));
-
-                    let user = context.user;
-                    let reqaddr = context.addr;
-                    trans.map(move |(enc, dec)| (user, reqaddr, transfer::Stat::new(enc, dec)))
-                });
-
-                tokio::spawn(transfer.then(move |res| {
-                    match res {
+                tokio::spawn(async move {
+                    match process(client, client_addr, users).await {
                         Ok((user, req, stat)) => info!(
                             "{} - ({}) request {} success, {}",
-                            peer_addr, user.name, req, stat,
+                            client_addr, user.name, req, stat,
                         ),
-                        Err(e) => error!("{} - failed by {}", peer_addr, e),
+                        Err(e) => error!("{} - failed by {}", client_addr, e),
                     }
-                    future::ok(())
-                }))
-            });
-
-        tokio::run(server);
-
-        Ok(())
+                });
+            }
+            Err(e) => error!("accepting socket, {}", e),
+        }
     }
+}
+
+async fn process(
+    mut client: TcpStream,
+    client_addr: SocketAddr,
+    users: Arc<HashMap<Digest, User>>,
+) -> io::Result<(User, String, Stat)> {
+    // timeout random [10, 40)
+    let secs = u64::from(rand::random::<u8>() % 30 + 10);
+
+    let mut handshake = Handshake::new(&mut client, client_addr, users);
+    let mut ctx = timeout(Duration::from_secs(secs), handshake.hand()).await??;
+
+    let (client_key, server_key) = ctx.key_pair.split();
+    let (cr, cw) = client.split();
+    let (rr, rw) = ctx.remote.split();
+
+    let en = transfer::encrypt(rr, cw, ctx.cipher, server_key);
+    let de = transfer::decrypt(cr, rw, ctx.cipher, client_key);
+
+    let stat = try_join(en, de).await?;
+    Ok((ctx.user, ctx.addr, Stat::new(stat.0, stat.1)))
 }
 
 struct Context {
     user: User,
     addr: String,
     cipher: Cipher,
-    keypair: KeyPair,
-    client: ProxyStream,
-    remote: ProxyStream,
-}
-
-#[derive(Copy, Clone, Debug)]
-enum HandshakeState {
-    ReqHeader(BufRange),
-    ReqData(BufRange),
-    ConnectRemote,
-    GenResponse,
-    RespToClient(BufRange),
-    Done,
+    key_pair: KeyPair,
+    remote: TcpStream,
 }
 
 struct Request {
-    success: bool,
     addr: String,
-    connect: Option<TcpConnect>,
     user: Option<User>,
     crypto: Option<Crypto>,
 
     remote: Option<TcpStream>,
     cipher: Option<Cipher>,
-    keypair: Option<KeyPair>,
+    key_pair: Option<KeyPair>,
 }
 
 impl Request {
     pub fn none() -> Request {
         Request {
-            success: false,
             addr: String::new(),
-            connect: None,
             user: None,
             crypto: None,
             remote: None,
             cipher: None,
-            keypair: None,
+            key_pair: None,
         }
     }
 }
 
-struct Handshake {
-    peer_addr: SocketAddr,
+struct Handshake<'a> {
+    client: &'a mut TcpStream,
+    client_addr: SocketAddr,
     users: Arc<HashMap<Digest, User>>,
-    client: ProxyStream,
-
-    buf: SharedBuf,
-    state: HandshakeState,
 
     req: Request,
 }
 
-impl Handshake {
-    fn new(peer: SocketAddr, users: Arc<HashMap<Digest, User>>, client: ProxyStream) -> Handshake {
+impl<'a> Handshake<'a> {
+    fn new(
+        client: &'a mut TcpStream,
+        client_addr: SocketAddr,
+        users: Arc<HashMap<Digest, User>>,
+    ) -> Handshake {
         Handshake {
-            peer_addr: peer,
-            users,
             client,
-            buf: SharedBuf::new(v3::MAX_BUFFER_SIZE),
-            state: HandshakeState::ReqHeader(BufRange {
-                start: 0,
-                end: v3::DATA_LEN_LEN + v3::HANDSHAKE_CIPHER.tag_len() + v3::DEFAULT_DIGEST_LEN,
-            }),
+            client_addr,
+            users,
             req: Request::none(),
         }
     }
@@ -168,12 +126,11 @@ impl Handshake {
     // +-----+---------+------+
     // |  2  |   Var.  |  32  |
     // +-----+---------+------+
-    fn parse_header(&mut self, range: BufRange) -> io::Result<usize> {
+    fn parse_header(&mut self, header: &mut [u8]) -> io::Result<usize> {
         let user = {
-            let user = self.buf.get_ref_range(BufRange {
-                start: range.end - v3::DEFAULT_DIGEST_LEN,
-                end: range.end,
-            });
+            let end = header.len();
+            let start = end - v3::DEFAULT_DIGEST_LEN;
+            let user = &header[start..end];
             self.users
                 .get(user)
                 .ok_or_else(|| other(&format!("user ({}) not exists", util::to_hex(user))))?
@@ -184,12 +141,8 @@ impl Handshake {
             user.password.as_ref(),
             user.password.as_ref(),
         )?;
-        let header = self.buf.get_mut_range(BufRange {
-            start: 0,
-            end: v3::DATA_LEN_LEN + crypto.tag_len(),
-        });
 
-        let size = crypto.decrypt(header)?;
+        let size = crypto.decrypt(&mut header[..v3::DATA_LEN_LEN + crypto.tag_len()])?;
         debug_assert_eq!(size, v3::DATA_LEN_LEN);
 
         let len = ((header[0] as usize) << 8) + (header[1] as usize);
@@ -211,18 +164,11 @@ impl Handshake {
     // +---------+-----+------+----------------+----------+
     // |   Var.  |  1  |   1  |  1  |   Var.   |    2     |
     // +---------+-----+------+-----+----------+----------+
-    fn parse_data(&mut self, range: BufRange) -> io::Result<Option<TcpConnect>> {
+    fn parse_data(&mut self, data: &mut [u8]) -> io::Result<Option<(String, u16)>> {
         let crypto = self.req.crypto.as_mut().unwrap();
         let user = self.req.user.as_ref().unwrap();
 
-        let data_len = {
-            let buf = self.buf.get_mut_range(range);
-            crypto.decrypt(buf)?
-        };
-        let data = self.buf.get_ref_range(BufRange {
-            start: range.start,
-            end: range.start + data_len,
-        });
+        let data_len = crypto.decrypt(data)?;
 
         let padding_len = (data[0] as usize) + 1;
         if data_len < padding_len + 1 + 1 + 1 + 1 {
@@ -232,7 +178,7 @@ impl Handshake {
             )));
         }
 
-        let buf = &data[padding_len..];
+        let buf = &data[padding_len..data_len];
         if buf[0] != v3::VERSION {
             return Err(other(&format!(
                 "({}) request version not match, need {}, but {}",
@@ -276,15 +222,15 @@ impl Handshake {
             Ok(cipher) => {
                 self.req.cipher = Some(cipher);
                 info!(
-                    "{} - ({}) request {}, cihper {}",
-                    self.peer_addr, user.name, self.req.addr, cipher,
+                    "{} - ({}) request {}, cipher {}",
+                    self.client_addr, user.name, self.req.addr, cipher,
                 );
-                Ok(Some(TcpConnect::new(addr)))
+                Ok(Some(addr))
             }
             Err(_) => {
                 info!(
                     "{} - ({}) request {}, cipher '{}' not support",
-                    self.peer_addr, user.name, self.req.addr, cipher_no,
+                    self.client_addr, user.name, self.req.addr, cipher_no,
                 );
                 Ok(None)
             }
@@ -298,7 +244,7 @@ impl Handshake {
     // +-----+---------+---------+-------+-------+------+
     // |  2  |   Var.  |   Var.  |    1  |  Var. | Var. |
     // +-----+---------+---------+-------+-------+------+
-    fn response(&mut self) -> io::Result<BufRange> {
+    fn response(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let user = self.req.user.as_ref().unwrap();
         let crypto = self.req.crypto.as_mut().unwrap();
 
@@ -309,22 +255,20 @@ impl Handshake {
         // PADDING
         let random_bytes = RandomBytes::new()?;
         let bytes = random_bytes.get();
-        let range = BufRange {
-            start: header_len,
-            end: header_len + bytes.len(),
-        };
-        self.buf.copy_from_slice(range, bytes);
+        let mut end = header_len + bytes.len();
+
+        (&mut buf[header_len..end]).copy_from_slice(bytes);
         data_len += bytes.len();
 
-        let mut resp = v3::SERVER_RESP_SUCCESSD;
+        let mut resp = v3::SERVER_RESP_SUCCEED;
 
-        self.req.keypair = match self.req.cipher {
+        self.req.key_pair = match self.req.cipher {
             Some(cipher) => match KeyPair::generate(user.password.as_ref(), cipher) {
                 Ok(key) => Some(key),
                 Err(e) => {
                     error!(
                         "{} - ({}) request generate key, {}",
-                        self.peer_addr, user.name, e,
+                        self.client_addr, user.name, e,
                     );
                     resp = v3::SERVER_RESP_ERROR;
                     None
@@ -335,138 +279,73 @@ impl Handshake {
                 None
             }
         };
-        if self.req.keypair.is_some() && self.req.remote.is_none() {
+        if self.req.key_pair.is_some() && self.req.remote.is_none() {
             resp = v3::SERVER_RESP_REMOTE_FAILED;
         }
 
-        // RESP
-        let range = BufRange {
-            start: range.end,
-            end: range.end + 1,
-        };
-        self.buf.copy_from_slice(range, &[resp]);
+        buf[end] = resp;
+        end += 1;
         data_len += 1;
 
         // KEY
-        if resp == v3::SERVER_RESP_SUCCESSD {
-            let key = self.req.keypair.as_ref().unwrap();
-            let range = BufRange {
-                start: range.end,
-                end: range.end + key.len(),
-            };
-            self.buf.copy_from_slice(range, key.as_ref());
+        if resp == v3::SERVER_RESP_SUCCEED {
+            let key = self.req.key_pair.as_ref().unwrap();
+            (&mut buf[end..end + key.len()]).copy_from_slice(key.as_ref());
             data_len += key.len();
         }
 
-        // Encrypted Data
-        let data_range = BufRange {
-            start: header_len,
-            end: header_len + data_len + tag_len,
-        };
-        {
-            let range = BufRange {
-                start: 0,
-                end: header_len,
-            };
-            let head = self.buf.get_mut_range(range);
+        // Big Endian
+        let data_len = data_len + tag_len;
+        buf[0] = (data_len >> 8) as u8;
+        buf[1] = data_len as u8;
+        crypto.encrypt(&mut buf[..header_len], 2)?;
+        crypto.encrypt(
+            &mut buf[header_len..header_len + data_len],
+            data_len - tag_len,
+        )?;
 
-            // Big Endian
-            let data_len = data_len + tag_len;
-            head[0] = (data_len >> 8) as u8;
-            head[1] = data_len as u8;
-            crypto.encrypt(head, 2)?;
-        }
-
-        let data = self.buf.get_mut_range(data_range);
-        crypto.encrypt(data, data_len)?;
-
-        if resp == v3::SERVER_RESP_SUCCESSD {
-            self.req.success = true;
-        }
-
-        Ok(BufRange {
-            start: 0,
-            end: data_range.end,
-        })
+        Ok(header_len + data_len)
     }
-}
 
-impl Future for Handshake {
-    type Item = Context;
-    type Error = io::Error;
+    async fn hand(&mut self) -> io::Result<Context> {
+        let mut buf = [0u8; v3::MAX_BUFFER_SIZE];
+        let header_len = v3::DATA_LEN_LEN + v3::HANDSHAKE_CIPHER.tag_len() + v3::DEFAULT_DIGEST_LEN;
 
-    fn poll(&mut self) -> Poll<Context, io::Error> {
-        loop {
-            match self.state {
-                // +-----+---------+------+
-                // | LEN | LEN TAG | USER |
-                // +-----+---------+------+
-                // |  2  |   Var.  |  32  |
-                // +-----+---------+------+
-                HandshakeState::ReqHeader(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
-                    let need = self.parse_header(range)?;
-                    self.state = HandshakeState::ReqData(BufRange {
-                        start: 0,
-                        end: need,
-                    });
-                }
-                HandshakeState::ReqData(range) => {
-                    let range = try_ready!(self.buf.read_exact(&mut self.client, range));
-                    self.state = match self.parse_data(range)? {
-                        Some(connect) => {
-                            self.req.connect = Some(connect);
-                            HandshakeState::ConnectRemote
-                        }
-                        None => HandshakeState::GenResponse,
-                    }
-                }
-                HandshakeState::ConnectRemote => {
-                    match self.req.connect {
-                        Some(ref mut s) => match s.poll() {
-                            Ok(Async::Ready(conn)) => self.req.remote = Some(conn),
-                            Ok(Async::NotReady) => return Ok(Async::NotReady),
-                            Err(e) => {
-                                let user = self.req.user.as_ref().unwrap();
-                                error!(
-                                    "{} - ({}) connect remote {}, {}",
-                                    self.peer_addr, user.name, self.req.addr, e,
-                                )
-                            }
-                        },
-                        None => panic!("connect server on illegal state"),
-                    };
-                    self.state = HandshakeState::GenResponse;
-                }
-                HandshakeState::GenResponse => {
-                    let range = self.response()?;
-                    self.state = HandshakeState::RespToClient(range);
-                }
-                HandshakeState::RespToClient(range) => {
-                    try_ready!(self.buf.write_exact(&mut self.client, range));
-                    self.state = HandshakeState::Done;
+        self.client.read_exact(&mut buf[..header_len]).await?;
+        let need = self.parse_header(&mut buf[..header_len])?;
+        self.client.read_exact(&mut buf[..need]).await?;
 
-                    let req = mem::replace(&mut self.req, Request::none());
-                    let user = req.user.unwrap();
-                    let addr = req.addr;
-
-                    let remote = match (req.remote, req.success) {
-                        (Some(conn), true) => conn,
-                        _ => return Err(other(&format!("({}) request {} failed", user.name, addr))),
-                    };
-
-                    return Ok(Async::Ready(Context {
-                        user,
-                        addr,
-                        cipher: req.cipher.unwrap(),
-                        keypair: req.keypair.unwrap(),
-                        client: self.client.clone(),
-                        remote: ProxyStream::new(remote),
-                    }));
+        if let Some(addr) = self.parse_data(&mut buf[..need])? {
+            match TcpStream::connect((&*addr.0, addr.1)).await {
+                Ok(conn) => self.req.remote = Some(conn),
+                Err(e) => {
+                    let user = self.req.user.as_ref().unwrap();
+                    error!(
+                        "{} - ({}) connect remote {}, {}",
+                        self.client_addr, user.name, self.req.addr, e,
+                    )
                 }
-                HandshakeState::Done => panic!("poll a done future"),
             }
         }
+
+        let len = self.response(&mut buf)?;
+        self.client.write_all(&buf[..len]).await?;
+
+        let req = mem::replace(&mut self.req, Request::none());
+        let user = req.user.unwrap();
+        let addr = req.addr;
+
+        let remote = match req.remote {
+            Some(conn) => conn,
+            None => return Err(other(&format!("({}) request {} failed", user.name, addr))),
+        };
+        Ok(Context {
+            user,
+            addr,
+            cipher: req.cipher.unwrap(),
+            key_pair: req.key_pair.unwrap(),
+            remote,
+        })
     }
 }
 
