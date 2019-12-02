@@ -115,10 +115,7 @@ pub fn expand_tilde_path(path: &str) -> Cow<str> {
     let path_after_tilde = &path[1..];
 
     // on support windows `\`
-    if path_after_tilde.is_empty()
-        || path_after_tilde.starts_with('/')
-        || path_after_tilde.starts_with(MAIN_SEPARATOR)
-    {
+    if path_after_tilde.is_empty() || path_after_tilde.starts_with(MAIN_SEPARATOR) {
         if let Some(hd) = dirs::home_dir() {
             let result = format!("{}{}", hd.display(), path_after_tilde);
             result.into()
@@ -156,13 +153,32 @@ mod test {
         };
 
         assert_eq!(format!("{}", home.display()), super::expand_tilde_path("~"));
-
-        home.push("rick");
-        assert_eq!(
-            format!("{}", home.display()),
-            super::expand_tilde_path("~/rick")
-        );
         assert_eq!("~rick", super::expand_tilde_path("~rick"));
-        assert_eq!("/home", super::expand_tilde_path("/home"));
+
+        if cfg!(target_os = "windows") {
+            home.push("rick");
+            assert_eq!(
+                format!("{}", home.display()),
+                super::expand_tilde_path("~\\rick")
+            );
+            home.push("morty.txt");
+            assert_eq!(
+                format!("{}", home.display()),
+                super::expand_tilde_path("~\\rick\\morty.txt")
+            );
+            assert_eq!("C:\\home", super::expand_tilde_path("C:\\home"));
+        } else {
+            home.push("rick");
+            assert_eq!(
+                format!("{}", home.display()),
+                super::expand_tilde_path("~/rick")
+            );
+            home.push("morty.txt");
+            assert_eq!(
+                format!("{}", home.display()),
+                super::expand_tilde_path("~/rick/morty.txt")
+            );
+            assert_eq!("/home", super::expand_tilde_path("/home"));
+        }
     }
 }
