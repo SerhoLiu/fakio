@@ -134,7 +134,6 @@ pub fn expand_tilde_path(path: &str) -> Cow<str> {
 
 #[cfg(test)]
 mod test {
-    use std::env;
     use std::io::ErrorKind;
 
     #[test]
@@ -151,24 +150,19 @@ mod test {
 
     #[test]
     fn test_expand_tilde_path() {
-        let old_home = env::var("HOME").ok();
-        env::set_var("HOME", "/home/morty");
+        let mut home = match dirs::home_dir() {
+            Some(hd) => hd,
+            None => return,
+        };
 
-        assert_eq!("/home/morty", super::expand_tilde_path("~"));
-        assert_eq!("/home/morty/rick", super::expand_tilde_path("~/rick"));
+        assert_eq!(format!("{}", home.display()), super::expand_tilde_path("~"));
+
+        home.push("rick");
+        assert_eq!(
+            format!("{}", home.display()),
+            super::expand_tilde_path("~/rick")
+        );
         assert_eq!("~rick", super::expand_tilde_path("~rick"));
         assert_eq!("/home", super::expand_tilde_path("/home"));
-
-        if cfg!(windows) {
-            env::set_var("HOME", r"C:\Users\Morty");
-            assert_eq!(
-                r"C:\Users\Morty\rick.txt",
-                super::expand_tilde_path(r"~\rick.txt")
-            );
-        }
-
-        if let Some(old) = old_home {
-            env::set_var("HOME", old);
-        }
     }
 }
