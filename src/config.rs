@@ -9,7 +9,6 @@ use std::result;
 use ring::digest;
 use serde::de;
 use serde_derive::Deserialize;
-use toml;
 
 use super::crypto::Cipher;
 use super::v3;

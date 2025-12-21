@@ -157,7 +157,7 @@ pub async fn handshake(
 
     // methods
     client.read_exact(&mut buf[..n_method]).await?;
-    if !(&buf[..n_method]).contains(&AUTH_METHOD_NONE) {
+    if !buf[..n_method].contains(&AUTH_METHOD_NONE) {
         return Err(other("no supported auth method given"));
     }
 
@@ -207,7 +207,7 @@ pub async fn handshake(
     };
 
     let reply_len = reply.get(rtype, &mut buf[..]);
-    client.write_all(&mut buf[..reply_len]).await?;
+    client.write_all(&buf[..reply_len]).await?;
 
     match remote {
         Ok(conn) => Ok((conn, req_addr)),
@@ -217,5 +217,5 @@ pub async fn handshake(
 
 #[inline]
 fn other(desc: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, desc)
+    io::Error::other(desc)
 }

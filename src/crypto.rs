@@ -2,7 +2,11 @@ use std::fmt;
 use std::io;
 use std::result;
 
-use ring::{aead, digest, hkdf, hmac, rand};
+use ring::aead::BoundKey;
+use ring::error::Unspecified;
+use ring::hkdf::KeyType;
+use ring::rand::{SecureRandom, SystemRandom};
+use ring::{aead, digest, hkdf};
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -18,8 +22,9 @@ pub enum Error {
     Seal,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum Cipher {
+    #[default]
     AES128GCM,
     AES256GCM,
     CHACHA20POLY1305,
@@ -71,12 +76,6 @@ impl Cipher {
     }
 }
 
-impl Default for Cipher {
-    fn default() -> Cipher {
-        Cipher::AES128GCM
-    }
-}
-
 const INFO_KEY: &str = "hello kelsi";
 
 #[derive(Debug)]
@@ -84,20 +83,31 @@ pub struct KeyPair {
     value: Vec<u8>,
 }
 
+struct KeyPairCipher(Cipher);
+
+impl KeyType for KeyPairCipher {
+    fn len(&self) -> usize {
+        self.0.key_len() * 2
+    }
+}
+
 impl KeyPair {
     pub fn generate(secret: &[u8], cipher: Cipher) -> Result<KeyPair> {
-        let len = cipher.key_len() * 2;
+        let mut bytes = [0u8; digest::MAX_OUTPUT_LEN];
+        let rng = SystemRandom::new();
+        rng.fill(&mut bytes[..hkdf::HKDF_SHA256.len()])
+            .map_err(|_| Error::GenKey)?;
+        let salt = hkdf::Salt::new(hkdf::HKDF_SHA256, &bytes[..hkdf::HKDF_SHA256.len()]);
 
-        let salt = hmac::SigningKey::generate(&digest::SHA256, &rand::SystemRandom::new())
+        let keypair_cipher = KeyPairCipher(cipher);
+        let mut out = vec![0u8; keypair_cipher.len()];
+
+        let prk = salt.extract(secret);
+        let info = &[INFO_KEY.as_bytes()];
+        prk.expand(info, keypair_cipher)
+            .and_then(|okm| okm.fill(&mut out[..]))
             .map_err(|_| Error::GenKey)?;
 
-        let mut out = Vec::with_capacity(len);
-
-        // not need init it
-        unsafe {
-            out.set_len(len);
-        }
-        hkdf::extract_and_expand(&salt, secret, INFO_KEY.as_bytes(), &mut out);
         Ok(KeyPair { value: out })
     }
 
@@ -133,11 +143,8 @@ pub struct Crypto {
     key_len: usize,
     nonce_len: usize,
 
-    open_key: aead::OpeningKey,
-    open_nonce: Vec<u8>,
-
-    seal_key: aead::SealingKey,
-    seal_nonce: Vec<u8>,
+    open_key: aead::OpeningKey<NonceSequence>,
+    seal_key: aead::SealingKey<NonceSequence>,
 }
 
 impl Crypto {
@@ -148,14 +155,14 @@ impl Crypto {
         if open_key.len() != key_len {
             return Err(Error::KeyLenNotMatch(key_len));
         }
-        let open_key = aead::OpeningKey::new(aead, open_key).map_err(|_| Error::OpenKey)?;
+        let open_uk = aead::UnboundKey::new(aead, open_key).map_err(|_| Error::OpenKey)?;
+        let open_key = aead::OpeningKey::new(open_uk, NonceSequence::new());
 
         if seal_key.len() != key_len {
             return Err(Error::KeyLenNotMatch(key_len));
         }
-        let seal_key = aead::SealingKey::new(aead, seal_key).map_err(|_| Error::SealKey)?;
-
-        let nonce_len = aead.nonce_len();
+        let seal_uk = aead::UnboundKey::new(aead, seal_key).map_err(|_| Error::SealKey)?;
+        let seal_key = aead::SealingKey::new(seal_uk, NonceSequence::new());
 
         Ok(Crypto {
             cipher,
@@ -166,9 +173,7 @@ impl Crypto {
             nonce_len: aead.nonce_len(),
 
             open_key,
-            open_nonce: vec![0u8; nonce_len],
             seal_key,
-            seal_nonce: vec![0u8; nonce_len],
         })
     }
 
@@ -183,40 +188,53 @@ impl Crypto {
             return Err(Error::SealBufferTooSmall(out_len));
         }
 
-        match aead::seal_in_place(
-            &self.seal_key,
-            &self.seal_nonce,
-            &[],
-            &mut inout[..out_len],
-            self.tag_len,
-        ) {
-            Ok(outlen) => debug_assert_eq!(out_len, outlen),
-            Err(_) => return Err(Error::Seal),
-        };
-
-        incr_nonce(&mut self.seal_nonce);
-
-        Ok(out_len)
+        match self
+            .seal_key
+            .seal_in_place_separate_tag(aead::Aad::empty(), &mut inout[..in_len])
+        {
+            Ok(tag) => {
+                inout[in_len..out_len].copy_from_slice(tag.as_ref());
+                Ok(out_len)
+            }
+            Err(_) => Err(Error::Seal),
+        }
     }
 
     #[inline]
     pub fn decrypt(&mut self, inout: &mut [u8]) -> Result<usize> {
-        match aead::open_in_place(&self.open_key, &self.open_nonce, &[], 0, inout) {
-            Ok(buf) => {
-                incr_nonce(&mut self.open_nonce);
-                Ok(buf.len())
-            }
+        match self.open_key.open_in_place(aead::Aad::empty(), inout) {
+            Ok(buf) => Ok(buf.len()),
             Err(_) => Err(Error::Open),
         }
     }
 }
 
-fn incr_nonce(nonce: &mut [u8]) {
-    for byte in nonce.iter_mut() {
-        let (sum, overflow) = (*byte).overflowing_add(1);
-        *byte = sum;
-        if !overflow {
-            break;
+struct NonceSequence([u8; aead::NONCE_LEN]);
+
+impl NonceSequence {
+    const fn new() -> NonceSequence {
+        NonceSequence([0u8; aead::NONCE_LEN])
+    }
+}
+
+impl aead::NonceSequence for NonceSequence {
+    fn advance(&mut self) -> result::Result<aead::Nonce, Unspecified> {
+        let nonce = aead::Nonce::assume_unique_for_key(self.0);
+
+        let mut overflow = false;
+        for byte in self.0.iter_mut() {
+            let (sum, of) = (*byte).overflowing_add(1);
+            *byte = sum;
+            overflow = of;
+            if !overflow {
+                break;
+            }
+        }
+
+        if overflow {
+            Err(Unspecified)
+        } else {
+            Ok(nonce)
         }
     }
 }
@@ -240,7 +258,7 @@ impl fmt::Display for Error {
 
 impl From<Error> for io::Error {
     fn from(err: Error) -> io::Error {
-        io::Error::new(io::ErrorKind::Other, format!("{}", err))
+        io::Error::other(format!("{}", err))
     }
 }
 
@@ -257,15 +275,17 @@ impl fmt::Display for Cipher {
 #[cfg(test)]
 mod test {
 
+    use ring::aead::NonceSequence;
+
     #[test]
     fn test_incr_nonce() {
-        let mut nonce = [0u8; 4];
-        for i in 1..1024 {
-            super::incr_nonce(&mut nonce);
-            let x = (nonce[0] as usize)
-                + ((nonce[1] as usize) << 8)
-                + ((nonce[2] as usize) << 16)
-                + ((nonce[3] as usize) << 24);
+        let mut nonce_seq = super::NonceSequence::new();
+        for i in 0..1024 {
+            let nonce = nonce_seq.advance().unwrap();
+            let x = (nonce.as_ref()[0] as usize)
+                + ((nonce.as_ref()[1] as usize) << 8)
+                + ((nonce.as_ref()[2] as usize) << 16)
+                + ((nonce.as_ref()[3] as usize) << 24);
             assert_eq!(x, i);
         }
     }

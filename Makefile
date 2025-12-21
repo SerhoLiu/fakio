@@ -8,7 +8,7 @@ release:
 	cargo build --release
 
 clippy:
-	cargo clippy -- -A many_single_char_names
+	cargo clippy
 
 format:
 	cargo fmt -- --check || exit 0

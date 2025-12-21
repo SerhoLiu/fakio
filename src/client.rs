@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use futures::future::try_join;
 use tokio;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::prelude::*;
 use tokio::time::{timeout, Duration};
 
 use super::config::ClientConfig;
@@ -22,7 +22,7 @@ pub async fn serve(config: ClientConfig) -> io::Result<()> {
     let config = Arc::new(config);
     let socks5_reply = Arc::new(socks5::Reply::new(config.listen));
 
-    let mut listener = TcpListener::bind(&config.listen)
+    let listener = TcpListener::bind(&config.listen)
         .await
         .map_err(|e| other(&format!("listen on {}, {}", config.listen, e)))?;
 
@@ -168,14 +168,14 @@ impl<'a> Handshake<'a> {
         // USER
         let start = header_len;
         let end = header_len + v3::DEFAULT_DIGEST_LEN;
-        (&mut buf[start..end]).copy_from_slice(self.config.username.as_ref());
+        buf[start..end].copy_from_slice(self.config.username.as_ref());
 
         // PADDING
         let random_bytes = RandomBytes::new()?;
         let bytes = random_bytes.get();
         let start = end;
         let end = end + bytes.len();
-        (&mut buf[start..end]).copy_from_slice(bytes);
+        buf[start..end].copy_from_slice(bytes);
 
         // VER and CTYP
         let start = end;
@@ -188,7 +188,7 @@ impl<'a> Handshake<'a> {
         let bytes = self.req_addr.get_bytes();
         let start = end;
         let end = end + bytes.len();
-        (&mut buf[start..end]).copy_from_slice(bytes);
+        buf[start..end].copy_from_slice(bytes);
 
         // Encrypt it
         let data_len = end - header_len;
@@ -208,5 +208,5 @@ impl<'a> Handshake<'a> {
 
 #[inline]
 fn other(desc: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, desc)
+    io::Error::other(desc)
 }

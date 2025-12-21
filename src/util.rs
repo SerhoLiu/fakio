@@ -5,11 +5,9 @@ use std::io::{self, Write};
 use std::path::MAIN_SEPARATOR;
 
 use ansi_term::Color;
-use dirs;
 use env_logger::{Builder, Formatter};
 use log::{Level, LevelFilter, Record};
 use ring::rand::{SecureRandom, SystemRandom};
-use time;
 
 use super::v3::MAX_PADDING_LEN;
 
@@ -76,12 +74,12 @@ impl RandomBytes {
 
         // 1. rand len
         rand.fill(&mut padding[..1])
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e)))?;
+            .map_err(|e| io::Error::other(format!("rand failed by {}", e)))?;
 
         // 2. rand data
         let len = padding[0] as usize;
         rand.fill(&mut padding[1..len + 1])
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("rand failed by {}", e)))?;
+            .map_err(|e| io::Error::other(format!("rand failed by {}", e)))?;
         Ok(RandomBytes {
             len,
             bytes: padding,
@@ -94,7 +92,7 @@ impl RandomBytes {
     }
 }
 
-static CHARS: &'static [u8] = b"0123456789abcdef";
+static CHARS: &[u8] = b"0123456789abcdef";
 
 pub fn to_hex(slice: &[u8]) -> String {
     let mut v = Vec::with_capacity(slice.len() * 2);
@@ -107,7 +105,7 @@ pub fn to_hex(slice: &[u8]) -> String {
 }
 
 /// Expand path like ~/xxx
-pub fn expand_tilde_path(path: &str) -> Cow<str> {
+pub fn expand_tilde_path(path: &str) -> Cow<'_, str> {
     if !path.starts_with('~') {
         return path.into();
     }

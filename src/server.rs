@@ -7,8 +7,8 @@ use std::sync::Arc;
 use futures::future::try_join;
 use rand;
 use tokio;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
 use tokio::time::{timeout, Duration};
 
 use super::config::{Digest, ServerConfig, User};
@@ -19,7 +19,7 @@ use super::util::{self, RandomBytes};
 use super::v3;
 
 pub async fn serve(config: ServerConfig) -> io::Result<()> {
-    let mut listener = TcpListener::bind(&config.listen)
+    let listener = TcpListener::bind(&config.listen)
         .await
         .map_err(|e| other(&format!("listen on {}, {}", config.listen, e)))?;
 
@@ -112,7 +112,7 @@ impl<'a> Handshake<'a> {
         client: &'a mut TcpStream,
         client_addr: SocketAddr,
         users: Arc<HashMap<Digest, User>>,
-    ) -> Handshake {
+    ) -> Handshake<'a> {
         Handshake {
             client,
             client_addr,
@@ -257,7 +257,7 @@ impl<'a> Handshake<'a> {
         let bytes = random_bytes.get();
         let mut end = header_len + bytes.len();
 
-        (&mut buf[header_len..end]).copy_from_slice(bytes);
+        buf[header_len..end].copy_from_slice(bytes);
         data_len += bytes.len();
 
         let mut resp = v3::SERVER_RESP_SUCCEED;
@@ -290,7 +290,7 @@ impl<'a> Handshake<'a> {
         // KEY
         if resp == v3::SERVER_RESP_SUCCEED {
             let key = self.req.key_pair.as_ref().unwrap();
-            (&mut buf[end..end + key.len()]).copy_from_slice(key.as_ref());
+            buf[end..end + key.len()].copy_from_slice(key.as_ref());
             data_len += key.len();
         }
 
@@ -350,5 +350,5 @@ impl<'a> Handshake<'a> {
 }
 
 fn other(desc: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, desc)
+    io::Error::other(desc)
 }

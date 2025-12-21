@@ -22,7 +22,7 @@ mod v3 {
     pub const DATA_LEN_LEN: usize = 2;
     pub const MAX_PADDING_LEN: usize = 255;
 
-    pub static DEFAULT_DIGEST: &'static Algorithm = &SHA256;
+    pub static DEFAULT_DIGEST: &Algorithm = &SHA256;
     pub const DEFAULT_DIGEST_LEN: usize = SHA256_OUTPUT_LEN;
 
     pub const HANDSHAKE_CIPHER: Cipher = Cipher::AES256GCM;
