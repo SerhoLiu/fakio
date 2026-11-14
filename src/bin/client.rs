@@ -5,10 +5,13 @@ use log::error;
 
 use fakio::{client, ClientConfig};
 
-#[tokio::main]
-async fn main() {
+fn main() {
     fakio::init_logger();
+    run();
+}
 
+#[tokio::main]
+async fn run() {
     let config_path = env::args()
         .nth(1)
         .unwrap_or_else(|| "conf/client.toml".to_string());

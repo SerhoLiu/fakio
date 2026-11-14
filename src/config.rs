@@ -154,3 +154,30 @@ where
     let config = toml::from_str(&content)?;
     Ok(config)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Cipher, ClientConfig, Digest, ServerConfig};
+
+    #[test]
+    fn load_example_client_config() {
+        let config =
+            ClientConfig::new(concat!(env!("CARGO_MANIFEST_DIR"), "/conf/client.toml")).unwrap();
+        assert_eq!(config.server, "127.0.0.1:8888".parse().unwrap());
+        assert_eq!(config.listen, "127.0.0.1:1080".parse().unwrap());
+        assert_eq!(config.username, Digest::new("serho"));
+        assert_eq!(config.password, Digest::new("123456"));
+        assert!(matches!(config.cipher, Cipher::AES256GCM));
+    }
+
+    #[test]
+    fn load_example_server_config() {
+        let config =
+            ServerConfig::new(concat!(env!("CARGO_MANIFEST_DIR"), "/conf/server.toml")).unwrap();
+        assert_eq!(config.listen, "127.0.0.1:8888".parse().unwrap());
+        assert_eq!(config.users.len(), 1);
+        let user = config.users.get(&Digest::new("serho")).unwrap();
+        assert_eq!(user.name, "serho");
+        assert_eq!(user.password, Digest::new("123456"));
+    }
+}

@@ -5,7 +5,8 @@ use std::io::{self, Write};
 use std::path::MAIN_SEPARATOR;
 
 use ansi_term::Color;
-use env_logger::{Builder, Formatter};
+use env_logger::fmt::Formatter;
+use env_logger::Builder;
 use log::{Level, LevelFilter, Record};
 use ring::rand::{SecureRandom, SystemRandom};
 
@@ -27,10 +28,16 @@ impl fmt::Display for ColorLevel {
 }
 
 pub fn init_logger() {
-    let format = |buf: &mut Formatter, record: &Record| {
-        let now = time::now();
-        let ms = now.tm_nsec / 1000 / 1000;
-        let t = time::strftime("%Y-%m-%d %T", &now).unwrap();
+    // Resolve the local offset before the Tokio runtime starts worker threads.
+    let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+    let format = move |buf: &mut Formatter, record: &Record| {
+        let now = time::OffsetDateTime::now_utc().to_offset(offset);
+        let ms = now.millisecond();
+        let t = now
+            .format(time::macros::format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second]"
+            ))
+            .map_err(io::Error::other)?;
         writeln!(
             buf,
             "{}.{:03} [{}]  {}",
@@ -45,11 +52,11 @@ pub fn init_logger() {
     builder.format(format).filter(None, LevelFilter::Info);
 
     if env::var("RUST_LOG").is_ok() {
-        builder.parse(&env::var("RUST_LOG").unwrap());
+        builder.parse_filters(&env::var("RUST_LOG").unwrap());
     }
 
     if env::var("FAKIO_LOG").is_ok() {
-        builder.parse(&env::var("FAKIO_LOG").unwrap());
+        builder.parse_filters(&env::var("FAKIO_LOG").unwrap());
     }
 
     builder.init();
