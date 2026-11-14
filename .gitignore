@@ -1,4 +1,5 @@
 .idea/
 examples/
 target/
+dist/
 .DS_Store

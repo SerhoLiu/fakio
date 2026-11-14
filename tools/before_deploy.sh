@@ -1,29 +1,25 @@
 #!/usr/bin/env bash
 # Building and packaging for release
 
-set -ex
+set -euo pipefail
 
-build() {
-    cargo build --target "$TARGET" --release --verbose
-}
+: "${TARGET:?TARGET must be set}"
+: "${RELEASE_TAG:?RELEASE_TAG must be set}"
+PROJECT_NAME=${PROJECT_NAME:-fakio}
+CHANNEL=${CHANNEL:-stable}
 
-copy() {
-    local out_dir=$(pwd)
-    local out_server="$out_dir/$PROJECT_NAME-server-$TRAVIS_TAG-$TARGET"
-    local out_client="$out_dir/$PROJECT_NAME-client-$TRAVIS_TAG-$TARGET"
+suffix=""
+case "$TARGET" in
+    *-windows-*) suffix=".exe" ;;
+esac
 
-    # copy server
-    cp "target/$TARGET/release/$PROJECT_NAME-server" "$out_server"
-    strip "$out_server"
+cargo +"$CHANNEL" build --locked --target "$TARGET" --release --bins --verbose
+mkdir -p dist
 
-    # copy client
-    cp "target/$TARGET/release/$PROJECT_NAME-client" "$out_client"
-    strip "$out_client"
-}
-
-main() {
-    build
-    copy
-}
-
-main
+for binary in server client; do
+    output="dist/$PROJECT_NAME-$binary-$RELEASE_TAG-$TARGET$suffix"
+    cp "target/$TARGET/release/$PROJECT_NAME-$binary$suffix" "$output"
+    if [[ -z "$suffix" ]]; then
+        strip "$output"
+    fi
+done

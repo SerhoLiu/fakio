@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  format:
+    name: Formatting
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rustfmt
+        run: rustup toolchain install stable --profile minimal --component rustfmt
+      - run: cargo +stable fmt --all -- --check
+
+  build:
+    name: ${{ matrix.channel }} / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.channel == 'nightly' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            channel: stable
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04
+            channel: stable
+            target: x86_64-unknown-linux-musl
+          - os: macos-15-intel
+            channel: stable
+            target: x86_64-apple-darwin
+          - os: macos-15
+            channel: stable
+            target: aarch64-apple-darwin
+          - os: windows-2022
+            channel: stable
+            target: x86_64-pc-windows-gnu
+          - os: windows-2022
+            channel: stable
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-24.04
+            channel: beta
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04
+            channel: nightly
+            target: x86_64-unknown-linux-gnu
+    env:
+      TARGET: ${{ matrix.target }}
+      CHANNEL: ${{ matrix.channel }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install MinGW
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+      - name: Add MinGW to PATH
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: '"$env:MSYS2_LOCATION\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append'
+      - name: Install Rust
+        run: rustup toolchain install "$CHANNEL" --profile minimal --target "$TARGET"
+      - name: Build
+        run: cargo +"$CHANNEL" build --locked --all-targets --target "$TARGET" --verbose
+      - name: Test
+        run: cargo +"$CHANNEL" test --locked --target "$TARGET" --verbose
+      - name: Package release binaries
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.channel == 'stable'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash tools/before_deploy.sh
+      - name: Smoke test release binaries
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.channel == 'stable'
+        env:
+          RUST_LOG: error
+          FAKIO_LOG: error
+        run: |
+          for binary in dist/fakio-*; do
+            if output=$("$binary" "$RUNNER_TEMP/fakio-missing-$GITHUB_RUN_ID.toml" 2>&1); then
+              echo "Expected missing-config failure from $binary"
+              exit 1
+            else
+              status=$?
+            fi
+            test "$status" -eq 1
+            [[ "$output" == *"load config"* ]]
+            echo "$binary: startup and logging passed"
+          done
+      - name: Upload release binaries
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.channel == 'stable'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [format, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            options=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              options+=(--prerelease --latest=false)
+            fi
+            gh release create "$RELEASE_TAG" dist/* --verify-tag --generate-notes "${options[@]}"
+          fi
